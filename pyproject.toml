@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "quantumfetcher"
-version = "0.1.0"
+version = "1.0.0"
 description = ""
 authors = ["Marek Grzyb <marek@grzyb.dev>"]
 readme = "README.md"
@@ -9,11 +9,14 @@ readme = "README.md"
 quantumfetcher = "quantumfetcher.main:app"
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = ">=3.13,<3.14"
 typer = "^0.15.0"
 tqdm = "^4.67.1"
 requests = "^2.32.3"
 
+
+[tool.poetry.group.dev.dependencies]
+pyinstaller = "^6.11.1"
 
 [build-system]
 requires = ["poetry-core"]

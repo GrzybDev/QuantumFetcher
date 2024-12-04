@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+  release:
+    types: [published]
+
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build
+    permissions: write-all
+
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.13
+      
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install
+     
+      - name: Build
+        run: poetry run pyinstaller -F --name QuantumFetcher .\quantumfetcher\main.py
+    
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Release
+          path: dist
+
+      - name: Upload Release
+        if: ${{ github.event_name == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+            files: ./dist/QuantumFetcher.exe
