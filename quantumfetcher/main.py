@@ -10,7 +10,18 @@ app = typer.Typer()
 RMDJ_KEY = [0xba, 0x7a, 0xbb, 0x27, 0x03, 0x9b, 0x72, 0xfd, 0x13, 0xeb, 0x70, 0x38, 0x7e, 0x0f, 0xcb, 0x41, 0xe1, 0xd0, 0xeb, 0x54, 0xbe, 0x8f, 0x13, 0x6d, 0xf0, 0xba, 0xe2, 0x2a, 0xdc, 0xfb, 0x40, 0xf1]
 
 @app.command()
-def main(path: Path = typer.Argument(help="Path to the game folder")):
+def main(path: Path = typer.Argument(help="Path to the game folder"),
+         episode: str = typer.Option(None, help="Episode to fetch"),
+         max_resolution: int = typer.Option(None, help="Maximum video resolution to fetch"),
+         max_bitrate: int = typer.Option(None, help="Maximum video bitrate to fetch"),
+         audio_languages: str = typer.Option(None, help="Comma-separated list of audio languages to fetch"),
+         subtitle_languages: str = typer.Option(None, help="Comma-separated list of subtitle languages to fetch")):
+    if audio_languages:
+        audio_languages = audio_languages.split(",")
+
+    if subtitle_languages:
+        subtitle_languages = subtitle_languages.split(",")
+
     if not path.is_dir():
         raise typer.BadParameter(f"Path {path} is not a directory")
     
@@ -34,7 +45,13 @@ def main(path: Path = typer.Argument(help="Path to the game folder")):
     except json.JSONDecodeError:
         raise typer.BadParameter(f"Failed to decode video list")
     
-    pbar_episodes = tqdm(video_list, desc="episode", position=0, leave=False, unit=" episode")
+    if episode is not None:
+        if episode not in video_list:
+            raise typer.BadParameter(f"Episode {episode} not found in video list")
+        
+        video_list = {episode: video_list[episode]}
+    
+    pbar_episodes = tqdm(video_list, desc="episode", position=0, leave=False, unit="episode")
     for episode in pbar_episodes:
         pbar_episodes.set_description(episode)
 
@@ -72,24 +89,36 @@ def main(path: Path = typer.Argument(help="Path to the game folder")):
         streams = {}
 
         for child in manifest:
-            quality_levels = []
             quality_levels_data = []
             chunks_data = []
 
             type = child.attrib["Type"]
+            lang = child.attrib.get("Language", None)
             name = child.attrib.get("Name", None)
             child.attrib["QualityLevels"] = "1"
             url = child.attrib["Url"].replace("start time", "starttime")
 
             for subchild in child:
                 if "QualityLevel" in subchild.tag:
-                    quality_levels.append(int(subchild.attrib["Bitrate"]))
                     quality_levels_data.append(subchild)
                 elif "c" in subchild.tag:
                     chunks_data.append(int(subchild.attrib["d"]))
+            
+            selected_bitrate = 0
+            for subchild in quality_levels_data:
+                if type == "video":
+                    if max_resolution is not None and int(subchild.attrib["MaxHeight"]) > max_resolution:
+                        continue
 
-            selected_bitrate = max(quality_levels)
-
+                    if max_bitrate is not None and int(subchild.attrib["Bitrate"]) > max_bitrate:
+                        continue
+                
+                selected_bitrate = max(selected_bitrate, int(subchild.attrib["Bitrate"]))
+            
+            if selected_bitrate == 0:
+                typer.echo(f"No suitable quality level found for {episode}, Skipping...")
+                break
+            
             for subchild in quality_levels_data:
                 if int(subchild.attrib["Bitrate"]) != selected_bitrate:
                     child.remove(subchild)
@@ -102,26 +131,25 @@ def main(path: Path = typer.Argument(help="Path to the game folder")):
 
             stream_folder = type if name is None else name
 
+            if type == "audio" and audio_languages:
+                if lang not in audio_languages:
+                    continue
+            elif type == "text" and subtitle_languages:
+                if lang not in subtitle_languages:
+                    continue
+
             stream_path = episodepath / stream_folder
             stream_path.mkdir(parents=True, exist_ok=True)
 
-            type = None
-            if stream_folder == "video":
-                type = "v"
-            elif "_captions" in stream_folder:
-                type = "t"
-            else:
-                type = "a"
-
             streams[stream_folder] = {
                 "fragment_url": url,
-                "type": type,
+                "type": type[:1],
                 "stream_folder": stream_folder,
-                "quality_levels": quality_levels,
+                "selected_bitrate": selected_bitrate,
                 "chunks_data": chunks_data,
             }
         
-        pbar_stream = tqdm(streams, desc="stream", position=1, leave=False, unit=" stream")
+        pbar_stream = tqdm(streams, desc="stream", position=1, leave=False, unit="stream")
         for stream in pbar_stream:
             pbar_stream.set_description(stream)
 
@@ -129,22 +157,24 @@ def main(path: Path = typer.Argument(help="Path to the game folder")):
             target_folder = streams[stream]["stream_folder"]
             stream_type = streams[stream]["type"]
             
-            pbar_chunk = tqdm(streams[stream]["chunks_data"], desc="chunk", position=2, leave=False, unit=" chunk")
+            pbar_chunk = tqdm(streams[stream]["chunks_data"], position=2, leave=False, unit="chunk")
             for chunk in pbar_chunk:
                 chunk_url = fragment_base_url
                 chunk_url += streams[stream]["fragment_url"].format(
-                    bitrate=max(streams[stream]["quality_levels"]), starttime=current_offset
+                    bitrate=streams[stream]["selected_bitrate"], starttime=current_offset
                 )
 
                 chunk_path = episodepath / target_folder / (f"{current_offset}.ism" + stream_type)
 
                 if not chunk_path.exists():
-                    try:
-                        req_chunk = requests.get(chunk_url)
-                        req_chunk.raise_for_status()
-                    except requests.exceptions.RequestException as e:
-                        typer.echo(f"Failed to fetch chunk {current_offset} for {episode}, Skipping...")
-                        continue
+                    while True:
+                        try:
+                            req_chunk = requests.get(chunk_url)
+                            req_chunk.raise_for_status()
+                            break
+                        except requests.exceptions.RequestException as e:
+                            typer.echo(f"Failed to fetch chunk {current_offset} for {episode}, retrying...")
+                            continue
 
                     with open(chunk_path, "wb") as f:
                         f.write(req_chunk.content)
