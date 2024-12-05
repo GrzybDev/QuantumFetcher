@@ -6,6 +6,8 @@ import requests
 import typer
 from tqdm import tqdm
 
+from quantumfetcher import helpers
+
 app = typer.Typer()
 
 RMDJ_KEY = [
@@ -55,6 +57,9 @@ def main(
     ),
     subtitle_languages: str = typer.Option(
         None, help="Comma-separated list of subtitle languages to fetch"
+    ),
+    extract_subtitles: bool = typer.Option(
+        False, help="Extract subtitles to .json after fetching"
     ),
 ):
     if audio_languages:
@@ -246,6 +251,9 @@ def main(
                         f.write(req_chunk.content)
 
                 current_offset += chunk
+
+            if extract_subtitles and stream_type == "t":
+                helpers.extract_subtitles(episodepath, target_folder)
 
 
 if __name__ == "__main__":
