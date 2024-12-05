@@ -49,14 +49,18 @@ RMDJ_KEY = [
 @app.command()
 def main(
     path: Path = typer.Argument(help="Path to the game folder"),
-    episode: str = typer.Option(None, help="Episode to fetch"),
-    max_resolution: int = typer.Option(None, help="Maximum video resolution to fetch"),
-    max_bitrate: int = typer.Option(None, help="Maximum video bitrate to fetch"),
+    episode: str = typer.Option(None, help="If set, only fetch this episode"),
+    max_resolution: int = typer.Option(
+        None, help="If set, maximum video resolution to fetch"
+    ),
+    max_bitrate: int = typer.Option(
+        None, help="If set, maximum video bitrate to fetch"
+    ),
     audio_languages: str = typer.Option(
-        None, help="Comma-separated list of audio languages to fetch"
+        "eng", help="Comma-separated list of audio languages to fetch"
     ),
     subtitle_languages: str = typer.Option(
-        None, help="Comma-separated list of subtitle languages to fetch"
+        "eng", help="Comma-separated list of subtitle languages to fetch"
     ),
     extract_subtitles: bool = typer.Option(
         False, help="Extract subtitles to .json after fetching"
