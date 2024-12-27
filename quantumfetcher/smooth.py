@@ -185,13 +185,13 @@ class Smooth:
             while current_range < content_length:
                 end_range = min(current_range + self.chunk_size, content_length) - 1
                 headers = {"X-MS-Range": f"bytes={current_range}-{end_range}"}
-                current_range = end_range + 1
 
                 with requests.get(url, headers=headers, stream=True) as r:
                     r.raise_for_status()
 
                     for chunk in r.iter_content(chunk_size=self.buffer_size):
                         f.write(chunk)
+                        current_range += len(chunk)
                         progress.update(dl_task, advance=len(chunk))
 
         return dl_task
