@@ -9,8 +9,8 @@ from quantumfetcher.stream import Stream
 
 class Smooth:
 
-    chunk_size = 1024 * 1024  # 1MB
-    max_range = 1024 * 1024 * 1024  # 1GB
+    buffer_size = 1024  # 1KB
+    chunk_size = 1024 * 1024 * 10  # 10MB
     namespace = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
 
     def __init__(self, ism: bytes, base_url: str):
@@ -183,14 +183,14 @@ class Smooth:
 
         with open(path, "ab") as f:
             while current_range < content_length:
-                end_range = min(current_range + self.max_range, content_length) - 1
+                end_range = min(current_range + self.chunk_size, content_length) - 1
                 headers = {"X-MS-Range": f"bytes={current_range}-{end_range}"}
                 current_range = end_range + 1
 
                 with requests.get(url, headers=headers, stream=True) as r:
                     r.raise_for_status()
 
-                    for chunk in r.iter_content(chunk_size=self.chunk_size):
+                    for chunk in r.iter_content(chunk_size=self.buffer_size):
                         f.write(chunk)
                         progress.update(dl_task, advance=len(chunk))
 
