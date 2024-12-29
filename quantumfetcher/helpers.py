@@ -84,6 +84,7 @@ def extract_subtitles(subtitle_path: Path, subtitle_track_name: str):
             mdat = f.read(mdat_size)
 
             xml_chunk = mdat[0x8:]
+            xml_chunk = re.sub(rb"<br[ ]?[ >/]?>", b"", xml_chunk)  # Remove <br> tags
             root = ET.fromstring(xml_chunk.decode())
 
             text_segments = root.findall(".//xmlns:p", namespaces=namespaces)
