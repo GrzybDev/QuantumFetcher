@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "quantumfetcher"
-version = "2.0"
+version = "2.0.1"
 description = ""
 authors = ["Marek Grzyb <marek@grzyb.dev>"]
 readme = "README.md"
