@@ -2,6 +2,8 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
 from quantumfetcher.dataclasses.SmoothStreamingMedia import SmoothStreamingMedia
+from quantumfetcher.enumerators.Language import Language
+from quantumfetcher.enumerators.StreamType import StreamType
 
 
 class ClientManifest:
@@ -47,3 +49,79 @@ class ClientManifest:
         with open(path, "w", encoding="utf-8") as f:
             parsed = minidom.parseString(finalxml)
             f.write(parsed.toprettyxml(indent="  "))
+
+    def list_video_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "video":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    (
+                        int(ql.get("MaxWidth", -1)),
+                        int(ql.get("MaxHeight", -1)),
+                        int(ql.get("Bitrate", -1)),
+                        ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
+
+    def list_audio_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "audio":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    (
+                        stream.attributes.get("Name", ""),
+                        Language(stream.attributes.get("Language", "unk")),
+                        int(ql.get("Bitrate", -1)),
+                        int(ql.get("SamplingRate", -1)),
+                        int(ql.get("Channels", -1)),
+                        int(ql.get("BitsPerSample", -1)),
+                        ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
+
+    def list_text_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "text":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    (
+                        stream.attributes.get("Name", ""),
+                        Language(stream.attributes.get("Language", "unk")),
+                        int(ql.get("Bitrate", -1)),
+                        ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
+
+    def get_chunks_count(self, mediaType: StreamType, trackName=None):
+        for stream in self.__streams:
+            if (
+                stream.attributes.get("Type") != mediaType.value
+                if mediaType != StreamType.Text
+                else "text"
+            ):
+                continue
+
+            if trackName and stream.attributes.get("Name") != trackName:
+                continue
+
+            return int(stream.attributes.get("Chunks"))
+        else:
+            return -1
