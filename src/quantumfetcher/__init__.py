@@ -20,5 +20,9 @@ def main(
             )
         ),
     ] = Path("data/videoList.rmdj"),
+    episodes_path: Annotated[
+        Optional[Path],
+        Option(help=("Relative output path to where episode data will be downloaded")),
+    ] = Path("videos/episodes"),
 ):
-    InteractiveMain(path, videolist_path)  # type: ignore
+    InteractiveMain(path, videolist_path, episodes_path)  # type: ignore

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -41,5 +42,17 @@ class VideoList:
     def get_episode_list(self) -> list:
         return list(self.__videoList.keys())
 
-    def get_manifest_url(self, episode_id) -> str:
-        return self.__videoList[episode_id]
+    def get_client_manifest_url(self, episode_id) -> str | None:
+        return self.__videoList.get(episode_id)
+
+    def get_server_manifest_url(self, episode_id) -> str | None:
+        clientManifestUrl = self.get_client_manifest_url(episode_id)
+
+        temp_url = urlparse(clientManifestUrl)._replace(query="")
+        manifestUrl = urlunparse(temp_url).replace("/manifest", "")
+
+        return manifestUrl
+
+    def get_media_url(self, episode_id, filename) -> str | None:
+        base_path = self.get_server_manifest_url(episode_id).rsplit("/", 1)[0]
+        return f"{base_path}/{filename}"
