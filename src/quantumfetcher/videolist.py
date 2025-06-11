@@ -24,6 +24,7 @@ class VideoList:
         with Progress(
             SpinnerColumn(finished_text="\u2713"),
             TextColumn("[progress.description]{task.description}"),
+            transient=True,
         ) as progress:
             task_id = progress.add_task("Reading video list...")
 
