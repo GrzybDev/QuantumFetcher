@@ -26,3 +26,7 @@ def main(
     ] = Path("videos/episodes"),
 ):
     InteractiveMain(path, videolist_path, episodes_path)  # type: ignore
+
+
+if __name__ == "__main__":
+    app()
