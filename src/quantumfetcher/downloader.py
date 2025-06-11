@@ -51,8 +51,9 @@ def download_media(mediaUrl: str, chunks: int, outputPath: Path, progress):
 
     progress.update(progress_media, total=contentLength)
 
-    chunkSize = ceil(contentLength / chunks)
-    print("Chunk size", chunkSize)
+    chunkSize = max(
+        ceil(contentLength / chunks), 1024 * 1024
+    )  # Segment-ish size or 1MB
 
     if outputPath.exists():
         # Resume from where we left
@@ -78,6 +79,11 @@ def download_media(mediaUrl: str, chunks: int, outputPath: Path, progress):
             with s.get(mediaUrl, headers=headers, stream=True) as r:
                 r.raise_for_status()
 
-                f.write(r.content)
-                currentRange += len(r.content)
-                progress.update(progress_media, advance=len(r.content))
+                dlBytes = 0
+
+                for chunk in r.iter_content(chunk_size=1024):
+                    f.write(chunk)
+                    currentRange += len(chunk)
+                    dlBytes += len(chunk)
+
+                progress.update(progress_media, advance=dlBytes)
