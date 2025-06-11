@@ -16,9 +16,25 @@ from quantumfetcher.enumerators.StreamType import StreamType
 def get_episodes(videoList):
     all_episodes = videoList.get_episode_list()
 
+    questions = [
+        inquirer.Checkbox(
+            "episodes",
+            message="Which episodes you want to download?",
+            choices=all_episodes,
+            default=[],
+        )
+    ]
+
+    answers = inquirer.prompt(questions)
+
+    if not answers:
+        answers = {"episodes": []}
+
     # Fetch server and client manifests for all episodes
     manifests = {}
-    for episode_id in track(all_episodes, description="Fetching episode manifests..."):
+    for episode_id in track(
+        answers["episodes"], description="Fetching episode manifests...", transient=True
+    ):
         client_manifest_url = videoList.get_client_manifest_url(episode_id)
         server_manifect_url = videoList.get_server_manifest_url(episode_id)
 
@@ -36,20 +52,6 @@ def get_episodes(videoList):
                     f"Failed to fetch episode {episode_id} manifests! ({e})", err=True
                 )
                 all_episodes.remove(episode_id)
-
-    questions = [
-        inquirer.Checkbox(
-            "episodes",
-            message="Which episodes you want to download?",
-            choices=all_episodes,
-            default=[],
-        )
-    ]
-
-    answers = inquirer.prompt(questions)
-
-    if not answers:
-        answers = {"episodes": []}
 
     return answers["episodes"], manifests
 
@@ -113,4 +115,16 @@ def get_streams(fetch_episodes, manifests):
         ),
     ]
 
-    return inquirer.prompt(questions)
+    # Filter out prompts with no choices
+    questions = [q for q in questions if q.choices]
+
+    if not questions:
+        typer.echo("No streams available for download.", err=True)
+        return {}
+
+    answers = inquirer.prompt(questions)
+
+    if not answers:
+        answers = {StreamType.Video: [], StreamType.Audio: [], StreamType.Text: []}
+
+    return answers
