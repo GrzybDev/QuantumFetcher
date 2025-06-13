@@ -1,6 +1,7 @@
 import json
+from http import server
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -53,6 +54,13 @@ class VideoList:
         manifestUrl = urlunparse(temp_url).replace("/manifest", "")
 
         return manifestUrl
+
+    def get_server_manifest_filename(self, episode_id) -> str | None:
+        serverManifestUrl = self.get_server_manifest_url(episode_id)
+
+        parsed_url = urlparse(serverManifestUrl)
+        filename = parsed_url.path.rsplit("/", 1)[-1]
+        return unquote(filename)
 
     def get_media_url(self, episode_id, filename) -> str | None:
         base_path = self.get_server_manifest_url(episode_id).rsplit("/", 1)[0]

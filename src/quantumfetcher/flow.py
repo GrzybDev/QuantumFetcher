@@ -155,6 +155,30 @@ class DownloadFlow:
 
             self.__progress_stream.advance(progress_stream)
 
+        manifests_progress = self.__progress_processing.add_task(
+            f"Saving episode server manifest...", total=2
+        )
+
+        self.__manifests[episode_id][0].save(
+            episode_path / self.__videoList.get_server_manifest_filename(episode_id)
+        )
+
+        clientManifestFilename = self.__manifests[episode_id][
+            0
+        ].get_client_manifest_relative_path()
+
+        self.__progress_processing.update(
+            manifests_progress,
+            advance=1,
+            description="Saving episode client manifest...",
+        )
+
+        self.__manifests[episode_id][1].save(episode_path / clientManifestFilename)
+
+        self.__progress_processing.update(
+            manifests_progress, advance=1, completed=True, visible=False
+        )
+
         self.__progress_stream.update(progress_stream, completed=True, visible=False)
 
     def __download_streams(self, episode_id, episode_path, streams, progress, extract):

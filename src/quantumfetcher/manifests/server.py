@@ -123,3 +123,6 @@ class ServerManifest:
         bitrates = self.__get_all_bitrates(type, trackName=name)
         closest_match = self.__get_closest_lte(bitrates, bitrate)
         return self.__get_stream(type, closest_match, trackName=name)
+
+    def get_client_manifest_relative_path(self):
+        return self.__headers.get("clientManifestRelativePath")
