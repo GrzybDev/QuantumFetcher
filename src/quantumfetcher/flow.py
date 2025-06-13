@@ -1,5 +1,4 @@
 import re
-from urllib.parse import urlparse, urlunparse
 
 import typer
 from rich.console import Group
@@ -172,14 +171,14 @@ class DownloadFlow:
                     "Extracting captions...", total=1
                 )
                 match = re.match(r"J(\d).*", episode_id)
-                episode_id = -1
+                episode_id_str = "-1"
 
                 if match:
-                    episode_id = match.group(1)
+                    episode_id_str = match.group(1)
 
                 extract_subtitles(
                     episode_path / filename,
-                    episode_num=int(episode_id),
+                    episode_num=int(episode_id_str),
                     track_name=stream.parameters.get("trackName", "unknown"),
                 )
 
