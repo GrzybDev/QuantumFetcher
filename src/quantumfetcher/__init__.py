@@ -3,7 +3,9 @@ from typing import Annotated, Optional
 
 from typer import Argument, Option, Typer
 
+from quantumfetcher.helpers import print_available_formats
 from quantumfetcher.interactive import InteractiveMain
+from quantumfetcher.noninteractive import NonInteractiveMain
 
 app = Typer()
 
@@ -24,8 +26,54 @@ def main(
         Optional[Path],
         Option(help=("Relative output path to where episode data will be downloaded")),
     ] = Path("videos/episodes"),
+    # Non-interactive options
+    episodes: Annotated[
+        Optional[str], Option(help="Comma-separated list of episode IDs to download")
+    ] = None,
+    video_bitrates: Annotated[Optional[str], Option(help="Video bitrates")] = None,
+    audio_langs: Annotated[Optional[str], Option(help="Audio languages")] = None,
+    audio_bitrates: Annotated[Optional[str], Option(help="Audio bitrates")] = None,
+    text_langs: Annotated[Optional[str], Option(help="Subtitle languages")] = None,
+    text_bitrates: Annotated[Optional[str], Option(help="Subtitle bitrates")] = None,
+    extract_subtitles: Annotated[
+        bool, Option(help="Extract subtitles to editable format", is_flag=True)
+    ] = False,
+    show_formats: Annotated[
+        bool,
+        Option(
+            help=(
+                "Show available formats for video/audio/text streams. "
+                "Audio/text also shows language."
+            ),
+            is_flag=True,
+        ),
+    ] = False,
 ):
-    InteractiveMain(path, videolist_path, episodes_path)  # type: ignore
+    """
+    Main entrypoint. If --episodes is provided, runs in non-interactive mode.
+    Otherwise, runs interactive mode.
+    """
+
+    if show_formats:
+        return print_available_formats(
+            path / (videolist_path or Path("data/videoList.rmdj")), episodes
+        )
+
+    if episodes:
+        NonInteractiveMain(
+            path,
+            videolist_path or Path("data/videoList.rmdj"),
+            episodes_path or Path("videos/episodes"),
+            episodes,
+            video_bitrates,
+            audio_langs,
+            audio_bitrates,
+            text_langs,
+            text_bitrates,
+            extract_subtitles,
+        )
+    else:
+        InteractiveMain(path, videolist_path, episodes_path)  # type: ignore
 
 
 if __name__ == "__main__":
