@@ -53,13 +53,13 @@ class DownloadFlow:
         TimeRemainingColumn(),
     )
 
-    __progress_subtitle = Progress(
+    __progress_processing = Progress(
         SpinnerColumn(finished_text="\u2713"),
         TextColumn("[progress.description]{task.description}"),
     )
 
     __progress_group = Group(
-        __progress_overall, __progress_stream, __progress_media, __progress_subtitle
+        __progress_overall, __progress_stream, __progress_media, __progress_processing
     )
 
     def __init__(self, videoList, manifests, output_path, extract_subtitles) -> None:
@@ -104,13 +104,15 @@ class DownloadFlow:
                         if stream:
                             output[StreamType.Video].append((stream, chunks))
                         else:
-                            typer.echo(
+                            self.__progress_stream.console.print(
                                 f"Cannot find Video stream with requested quality for episode {episode_id}, skipping...",
-                                err=True,
                             )
                     case StreamType.Audio | StreamType.Text:
+                        if episode_id != "J1 - 4K Test" and ql.name == "eng":
+                            continue
+
                         stream = server_manifest.get_named_stream(
-                            ql.name if episode_id != "J1 - 4K Test" else "eng",
+                            ql.name,
                             stream_type,
                             ql.bitrate,
                         )
@@ -119,9 +121,8 @@ class DownloadFlow:
                         if stream:
                             output[stream_type].append((stream, chunks))
                         else:
-                            typer.echo(
+                            self.__progress_stream.console.print(
                                 f"Cannot find {stream_type.name} stream ({ql.name}) with requested quality for episode {episode_id}, skipping...",
-                                err=True,
                             )
         return output
 
@@ -191,7 +192,7 @@ class DownloadFlow:
             )
 
             if extract:
-                subtitle_task = self.__progress_subtitle.add_task(
+                subtitle_task = self.__progress_processing.add_task(
                     "Extracting captions...", total=1
                 )
                 match = re.match(r"J(\d).*", episode_id)
@@ -206,7 +207,7 @@ class DownloadFlow:
                     track_name=stream.parameters.get("trackName", "unknown"),
                 )
 
-                self.__progress_subtitle.update(
+                self.__progress_processing.update(
                     subtitle_task, advance=1, completed=True, visible=False
                 )
 
