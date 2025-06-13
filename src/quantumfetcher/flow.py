@@ -132,8 +132,12 @@ class DownloadFlow:
 
         media_to_download = self.__get_streams_to_fetch(episode_id, qualities)
 
+        total_streams = sum(
+            len(media_to_download[stream_type]) for stream_type in media_to_download
+        )
+
         progress_stream = self.__progress_stream.add_task(
-            "Downloading episode media...", total=len(media_to_download)
+            "Downloading episode media...", total=total_streams
         )
 
         for stream_type in media_to_download:
