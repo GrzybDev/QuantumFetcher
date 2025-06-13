@@ -13,19 +13,22 @@ from quantumfetcher.enumerators.ManifestType import ManifestType
 from quantumfetcher.enumerators.StreamType import StreamType
 
 
-def get_episodes(videoList):
+def get_episodes(videoList, selected_episodes=None):
     all_episodes = videoList.get_episode_list()
 
-    questions = [
-        inquirer.Checkbox(
-            "episodes",
-            message="Which episodes you want to download?",
-            choices=all_episodes,
-            default=[],
-        )
-    ]
+    if not selected_episodes:
+        questions = [
+            inquirer.Checkbox(
+                "episodes",
+                message="Which episodes you want to download?",
+                choices=all_episodes,
+                default=[],
+            )
+        ]
 
-    answers = inquirer.prompt(questions)
+        answers = inquirer.prompt(questions)
+    else:
+        answers = {"episodes": selected_episodes}
 
     if not answers:
         answers = {"episodes": []}
