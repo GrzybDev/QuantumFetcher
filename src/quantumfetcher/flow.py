@@ -136,6 +136,11 @@ class DownloadFlow:
         episode_path.mkdir(exist_ok=True)
 
         media_to_download = self.__get_streams_to_fetch(episode_id, qualities)
+        media_downloaded = {
+            StreamType.Video: [],
+            StreamType.Audio: [],
+            StreamType.Text: [],
+        }
 
         total_streams = sum(
             len(media_to_download[stream_type]) for stream_type in media_to_download
@@ -151,13 +156,13 @@ class DownloadFlow:
                 description=f"Downloading {stream_type.name} Streams...",
             )
 
-            self.__download_streams(
+            dl_streams = self.__download_streams(
                 episode_id,
                 episode_path,
                 media_to_download[stream_type],
-                progress_stream,
                 stream_type == StreamType.Text and self.__extract_subtitles,
             )
+            media_downloaded[stream_type].extend(dl_streams)
 
             self.__progress_stream.advance(progress_stream)
 
@@ -167,7 +172,7 @@ class DownloadFlow:
 
         server_manifest, client_manifest = self.__manifests[episode_id]
 
-        server_manifest.remove_not_downloaded_streams(qualities)
+        server_manifest.remove_not_downloaded_streams(media_downloaded)
 
         server_manifest.save(
             episode_path / self.__videoList.get_server_manifest_filename(episode_id)
@@ -181,7 +186,7 @@ class DownloadFlow:
             description="Saving episode client manifest...",
         )
 
-        client_manifest.remove_not_downloaded_streams(qualities)
+        client_manifest.remove_not_downloaded_streams(media_downloaded)
 
         client_manifest.save(episode_path / clientManifestFilename)
 
@@ -191,7 +196,9 @@ class DownloadFlow:
 
         self.__progress_stream.update(progress_stream, completed=True, visible=False)
 
-    def __download_streams(self, episode_id, episode_path, streams, progress, extract):
+    def __download_streams(self, episode_id, episode_path, streams, extract):
+        finished_streams = []
+
         for stream, chunks in streams:
             filename = stream.attributes.get("src")
             media_url = self.__videoList.get_media_url(episode_id, filename)
@@ -199,6 +206,8 @@ class DownloadFlow:
             download_media(
                 media_url, chunks, episode_path / filename, self.__progress_media
             )
+
+            finished_streams.append(stream)
 
             if extract:
                 subtitle_task = self.__progress_processing.add_task(
@@ -224,3 +233,5 @@ class DownloadFlow:
 
         for task in self.__progress_media.tasks:
             self.__progress_media.update(task.id, completed=True, visible=False)
+
+        return finished_streams

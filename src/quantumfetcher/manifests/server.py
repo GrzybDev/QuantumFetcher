@@ -131,27 +131,36 @@ class ServerManifest:
         for stream_type, qualities in downloaded_qualities.items():
             if stream_type == StreamType.Video:
                 # For video streams, only match by bitrate
-                allowed_bitrates = [q.bitrate for q in qualities]
+                allowed_bitrates = [
+                    int(q.attributes.get("systemBitrate", -1)) for q in qualities
+                ]
                 self.__streams = [
                     stream
                     for stream in self.__streams
                     if not (
                         stream.type == StreamType.Video
-                        and int(stream.attributes.get("systemBitrate", -1))
+                        and int(stream.attributes.get("systemBitrate", -2))
                         not in allowed_bitrates
                     )
                 ]
             elif stream_type in (StreamType.Audio, StreamType.Text):
                 # For audio/text, match by both trackName, bitrate, and language
-                allowed = set((q.name, q.bitrate, q.language.value) for q in qualities)
+                allowed = set(
+                    (
+                        q.parameters.get("trackName"),
+                        q.attributes.get("systemLanguage"),
+                        int(q.attributes.get("systemBitrate", -1)),
+                    )
+                    for q in qualities
+                )
 
                 def is_allowed(stream):
                     if stream.type != stream_type:
                         return True
                     track_name = stream.parameters.get("trackName")
                     language = stream.attributes.get("systemLanguage")
-                    bitrate = int(stream.attributes.get("systemBitrate", -1))
-                    return (track_name, bitrate, language) in allowed
+                    bitrate = int(stream.attributes.get("systemBitrate", -2))
+                    return (track_name, language, bitrate) in allowed
 
                 self.__streams = [
                     stream for stream in self.__streams if is_allowed(stream)
