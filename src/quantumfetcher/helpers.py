@@ -95,13 +95,10 @@ def _parse_list(param: str | None, cast_func: Callable | None = None):
 
 
 def _filter_streams(streams, lang_list, bitrate_list, lang_idx=1, bitrate_idx=2):
-    def get_lang(val):
-        return val.value if hasattr(val, "value") else val
-
     return [
         s
         for s in streams
-        if (not lang_list or get_lang(s[lang_idx]) in lang_list)
+        if (not lang_list or s[lang_idx].value in lang_list)
         and (not bitrate_list or s[bitrate_idx] in bitrate_list)
     ]
 
@@ -179,15 +176,9 @@ def select_highest_eng_streams(fetch_episodes, manifests):
         best_video = sorted(video_set, key=lambda v: v[2], reverse=True)[0]
         result[StreamType.Video].append(VideoStream(*best_video))
     result[StreamType.Audio] = [
-        AudioStream(*a)
-        for a in audio_set
-        if (a[1].value if hasattr(a[1], "value") else a[1]) == "eng"
+        AudioStream(*a) for a in audio_set if a[1].value == "eng"
     ]
-    result[StreamType.Text] = [
-        TextStream(*t)
-        for t in text_set
-        if (t[1].value if hasattr(t[1], "value") else t[1]) == "eng"
-    ]
+    result[StreamType.Text] = [TextStream(*t) for t in text_set if t[1].value == "eng"]
     return result
 
 
