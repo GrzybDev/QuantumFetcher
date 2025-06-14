@@ -160,11 +160,10 @@ class DownloadFlow:
                 episode_id,
                 episode_path,
                 media_to_download[stream_type],
+                progress_stream,
                 stream_type == StreamType.Text and self.__extract_subtitles,
             )
             media_downloaded[stream_type].extend(dl_streams)
-
-            self.__progress_stream.advance(progress_stream)
 
         manifests_progress = self.__progress_processing.add_task(
             f"Saving episode server manifest...", total=2
@@ -196,7 +195,7 @@ class DownloadFlow:
 
         self.__progress_stream.update(progress_stream, completed=True, visible=False)
 
-    def __download_streams(self, episode_id, episode_path, streams, extract):
+    def __download_streams(self, episode_id, episode_path, streams, progress, extract):
         finished_streams = []
 
         for stream, chunks in streams:
