@@ -15,7 +15,7 @@ def InteractiveMain(gamePath: Path, videoList_path: Path, episodes_path: Path):
     qualities_to_fetch = surveys.get_streams(episodes_to_fetch, manifests)
     extract_subtitles = False
 
-    if qualities_to_fetch[StreamType.Text]:
+    if qualities_to_fetch.get(StreamType.Text):
         extract_subtitles = typer.confirm(
             "Do you want to extract subtitles to editable format?"
         )
