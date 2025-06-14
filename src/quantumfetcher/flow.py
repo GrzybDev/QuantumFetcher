@@ -110,11 +110,17 @@ class DownloadFlow:
                                 f"Cannot find Video stream with requested quality for episode {episode_id}, skipping...",
                             )
                     case StreamType.Audio | StreamType.Text:
-                        if episode_id != "J1 - 4K Test" and ql.name == "eng":
-                            continue
+                        trackName = ql.name
+
+                        if (
+                            stream_type == StreamType.Audio
+                            and trackName == "enus"
+                            and episode_id == "J1 - 4K Test"
+                        ):
+                            trackName = "eng"
 
                         stream = server_manifest.get_named_stream(
-                            ql.name,
+                            trackName,
                             stream_type,
                             ql.bitrate,
                         )
@@ -127,7 +133,7 @@ class DownloadFlow:
                                 continue
 
                             self.__progress_stream.console.print(
-                                f"Cannot find {stream_type.name} stream ({ql.name}) with requested quality for episode {episode_id}, skipping...",
+                                f"Cannot find {stream_type.name} stream ({trackName}) with requested quality for episode {episode_id}, skipping...",
                             )
         return output
 
