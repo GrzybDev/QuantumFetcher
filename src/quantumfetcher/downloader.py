@@ -1,8 +1,10 @@
+import time
 from math import ceil
 from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
+from requests.exceptions import ChunkedEncodingError
 
 from quantumfetcher.enumerators.manifest_type import ManifestType
 from quantumfetcher.manifests.client import ClientManifest
@@ -75,14 +77,18 @@ def download_media(mediaUrl: str, chunks: int, outputPath: Path, progress):
                 "X-MS-Range": f"bytes={currentRange}-{endRange}",
             }
 
-            with s.get(mediaUrl, headers=headers, stream=True) as r:
-                r.raise_for_status()
+            try:
+                with s.get(mediaUrl, headers=headers, stream=True) as r:
+                    r.raise_for_status()
 
-                dlBytes = 0
+                    dlBytes = 0
 
-                for chunk in r.iter_content(chunk_size=1024):
-                    f.write(chunk)
-                    currentRange += len(chunk)
-                    dlBytes += len(chunk)
+                    for chunk in r.iter_content(chunk_size=1024):
+                        f.write(chunk)
+                        currentRange += len(chunk)
+                        dlBytes += len(chunk)
 
-                progress.update(progress_media, advance=dlBytes)
+                    progress.update(progress_media, advance=dlBytes)
+            except ChunkedEncodingError:
+                time.sleep(1)
+                continue
