@@ -213,14 +213,18 @@ def print_available_formats(videoListPath, episodes):
     qualities = get_quality_levels(manifests, episode_ids)
 
     print(
-        "Available video formats:\n",
-        "\n".join([f"- {v}" for v in qualities[StreamType.Video]]),
+        "Available video formats:\n"
+        + "\n".join([f"- {v}" for v in qualities[StreamType.Video]]),
     )
     print(
-        "Available audio languages:\n",
-        "\n".join([f"- {a} [{a.language.value}]" for a in qualities[StreamType.Audio]]),  # type: ignore
+        "Available audio languages:\n"
+        + "\n".join(
+            [f"- {a} [{a.language.value}]" for a in qualities[StreamType.Audio]]
+        ),  # type: ignore
     )
     print(
-        "Available text formats:\n",
-        "\n".join([f"- {t} [{t.language.value}]" for t in qualities[StreamType.Text]]),  # type: ignore
+        "Available text formats:\n"
+        + "\n".join(
+            [f"- {t} [{t.language.value}]" for t in qualities[StreamType.Text]]
+        ),  # type: ignore
     )
