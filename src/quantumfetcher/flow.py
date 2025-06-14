@@ -159,13 +159,15 @@ class DownloadFlow:
             f"Saving episode server manifest...", total=2
         )
 
-        self.__manifests[episode_id][0].save(
+        server_manifest, client_manifest = self.__manifests[episode_id]
+
+        server_manifest.remove_not_downloaded_streams(qualities)
+
+        server_manifest.save(
             episode_path / self.__videoList.get_server_manifest_filename(episode_id)
         )
 
-        clientManifestFilename = self.__manifests[episode_id][
-            0
-        ].get_client_manifest_relative_path()
+        clientManifestFilename = server_manifest.get_client_manifest_relative_path()
 
         self.__progress_processing.update(
             manifests_progress,
@@ -173,7 +175,9 @@ class DownloadFlow:
             description="Saving episode client manifest...",
         )
 
-        self.__manifests[episode_id][1].save(episode_path / clientManifestFilename)
+        client_manifest.remove_not_downloaded_streams(qualities)
+
+        client_manifest.save(episode_path / clientManifestFilename)
 
         self.__progress_processing.update(
             manifests_progress, advance=1, completed=True, visible=False

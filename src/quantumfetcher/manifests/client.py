@@ -144,3 +144,38 @@ class ClientManifest:
             return int(stream.attributes.get("Chunks"))
         else:
             return -1
+
+    def remove_not_downloaded_streams(self, downloaded_qualities):
+        for stream_type, qualities in downloaded_qualities.items():
+            for stream in self.__streams.copy():
+                if stream.attributes.get("Type") != stream_type.value:
+                    continue
+
+                if stream_type == StreamType.Video:
+                    allowed_bitrates = [q.bitrate for q in qualities]
+                    stream.qualityLevels = [
+                        ql
+                        for ql in stream.qualityLevels
+                        if int(ql.get("Bitrate", -1)) in allowed_bitrates
+                    ]
+                elif stream_type in (StreamType.Audio, StreamType.Text):
+                    allowed = set(
+                        (q.name, q.bitrate, q.language.value) for q in qualities
+                    )
+                    stream_language = stream.attributes.get("Language")
+                    stream_name = stream.attributes.get("Name", "")
+                    stream.qualityLevels = [
+                        ql
+                        for ql in stream.qualityLevels
+                        if (
+                            stream_name,
+                            int(ql.get("Bitrate", -1)),
+                            stream_language,
+                        )
+                        in allowed
+                    ]
+
+                stream.attributes["QualityLevels"] = str(len(stream.qualityLevels))
+
+                if not stream.qualityLevels:
+                    self.__streams.remove(stream)
