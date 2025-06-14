@@ -101,6 +101,9 @@ class DownloadFlow:
                         chunks = client_manifest.get_chunks_count(StreamType.Video)
 
                         if stream:
+                            if (stream, chunks) in output[stream_type]:
+                                continue
+
                             output[StreamType.Video].append((stream, chunks))
                         else:
                             if episode_id == "J1 - 4K Test":
@@ -127,6 +130,9 @@ class DownloadFlow:
                         chunks = client_manifest.get_chunks_count(stream_type)
 
                         if stream:
+                            if (stream, chunks) in output[stream_type]:
+                                continue
+
                             output[stream_type].append((stream, chunks))
                         else:
                             if episode_id == "J1 - 4K Test":
