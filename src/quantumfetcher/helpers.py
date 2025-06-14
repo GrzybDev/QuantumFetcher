@@ -1,5 +1,5 @@
 import operator
-from typing import Callable, Optional
+from collections.abc import Callable
 
 import typer
 from rich.progress import track
@@ -86,7 +86,7 @@ def get_quality_levels(manifests, episode_ids):
     }
 
 
-def _parse_list(param: Optional[str], cast_func: Optional[Callable] = None):
+def _parse_list(param: str | None, cast_func: Callable | None = None):
     if param == "all" or param is None:
         return None
     if cast_func:

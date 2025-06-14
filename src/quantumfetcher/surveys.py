@@ -1,15 +1,8 @@
-import operator
 import sys
 
 import inquirer
 import typer
-from rich.progress import track
 
-from quantumfetcher.dataclasses.AudioStream import AudioStream
-from quantumfetcher.dataclasses.TextStream import TextStream
-from quantumfetcher.dataclasses.VideoStream import VideoStream
-from quantumfetcher.downloader import fetch_manifest
-from quantumfetcher.enumerators.ManifestType import ManifestType
 from quantumfetcher.enumerators.StreamType import StreamType
 from quantumfetcher.helpers import fetch_manifests, get_quality_levels
 

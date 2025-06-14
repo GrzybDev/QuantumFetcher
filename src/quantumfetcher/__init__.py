@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 from typer import Argument, Option, Typer
 
@@ -14,7 +14,7 @@ app = Typer()
 def main(
     path: Annotated[Path, Argument(exists=True, dir_okay=True, readable=True)],
     videolist_path: Annotated[
-        Optional[Path],
+        Path | None,
         Option(
             help=(
                 "Relative path to videoList.rmdj file "
@@ -23,18 +23,18 @@ def main(
         ),
     ] = Path("data/videoList.rmdj"),
     episodes_path: Annotated[
-        Optional[Path],
+        Path | None,
         Option(help=("Relative output path to where episode data will be downloaded")),
     ] = Path("videos/episodes"),
     # Non-interactive options
     episodes: Annotated[
-        Optional[str], Option(help="Comma-separated list of episode IDs to download")
+        str | None, Option(help="Comma-separated list of episode IDs to download")
     ] = None,
-    video_bitrates: Annotated[Optional[str], Option(help="Video bitrates")] = None,
-    audio_langs: Annotated[Optional[str], Option(help="Audio languages")] = None,
-    audio_bitrates: Annotated[Optional[str], Option(help="Audio bitrates")] = None,
-    text_langs: Annotated[Optional[str], Option(help="Subtitle languages")] = None,
-    text_bitrates: Annotated[Optional[str], Option(help="Subtitle bitrates")] = None,
+    video_bitrates: Annotated[str | None, Option(help="Video bitrates")] = None,
+    audio_langs: Annotated[str | None, Option(help="Audio languages")] = None,
+    audio_bitrates: Annotated[str | None, Option(help="Audio bitrates")] = None,
+    text_langs: Annotated[str | None, Option(help="Subtitle languages")] = None,
+    text_bitrates: Annotated[str | None, Option(help="Subtitle bitrates")] = None,
     extract_subtitles: Annotated[
         bool, Option(help="Extract subtitles to editable format", is_flag=True)
     ] = False,
