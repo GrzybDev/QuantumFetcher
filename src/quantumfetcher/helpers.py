@@ -150,7 +150,9 @@ def filter_streams_by_quality_and_language(
             key=lambda x: (x.language.name, -x.bitrate),
         )
 
-        if not audio_lang_list:  # If no languages specified, keep only english streams
+        if (
+            not audio_lang_list and audio_langs != "all"
+        ):  # If no languages specified, keep only english streams
             result[StreamType.Audio] = [
                 a for a in result[StreamType.Audio] if a.language.value == "eng"
             ]
@@ -169,7 +171,9 @@ def filter_streams_by_quality_and_language(
             key=lambda x: (x.language.name, -x.bitrate),
         )
 
-        if not text_lang_list:  # If no languages specified, keep only english streams
+        if (
+            not text_lang_list and text_langs != "all"
+        ):  # If no languages specified, keep only english streams
             result[StreamType.Text] = [
                 t for t in result[StreamType.Text] if t.language.value == "eng"
             ]
