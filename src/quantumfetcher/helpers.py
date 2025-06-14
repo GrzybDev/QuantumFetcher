@@ -133,6 +133,9 @@ def filter_streams_by_quality_and_language(
             key=operator.attrgetter("bitrate"),
         )
 
+        if not video_bitrate_list:
+            result[StreamType.Video] = [result[StreamType.Video][-1]]
+
     # AUDIO
     if audio_langs == "all" and audio_bitrates == "all":
         result[StreamType.Audio] = [AudioStream(*a) for a in audio_set]
@@ -147,6 +150,11 @@ def filter_streams_by_quality_and_language(
             key=lambda x: (x.language.name, -x.bitrate),
         )
 
+        if not audio_lang_list:  # If no languages specified, keep only english streams
+            result[StreamType.Audio] = [
+                a for a in result[StreamType.Audio] if a.language.value == "eng"
+            ]
+
     # TEXT
     if text_langs == "all" and text_bitrates == "all":
         result[StreamType.Text] = [TextStream(*t) for t in text_set]
@@ -160,6 +168,11 @@ def filter_streams_by_quality_and_language(
             ],
             key=lambda x: (x.language.name, -x.bitrate),
         )
+
+        if not text_lang_list:  # If no languages specified, keep only english streams
+            result[StreamType.Text] = [
+                t for t in result[StreamType.Text] if t.language.value == "eng"
+            ]
 
     return result
 
