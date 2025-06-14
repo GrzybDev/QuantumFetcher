@@ -154,7 +154,9 @@ class ClientManifest:
                     continue
 
                 if stream_type == StreamType.Video:
-                    allowed_bitrates = [q.bitrate for q in qualities]
+                    allowed_bitrates = [
+                        int(q.attributes.get("systemBitrate", -1)) for q in qualities
+                    ]
                     stream.qualityLevels = [
                         ql
                         for ql in stream.qualityLevels
@@ -162,7 +164,12 @@ class ClientManifest:
                     ]
                 elif stream_type in (StreamType.Audio, StreamType.Text):
                     allowed = set(
-                        (q.name, q.bitrate, q.language.value) for q in qualities
+                        (
+                            q.parameters.get("trackName"),
+                            q.attributes.get("systemLanguage"),
+                            int(q.attributes.get("systemBitrate", -1)),
+                        )
+                        for q in qualities
                     )
                     stream_language = stream.attributes.get("Language")
                     stream_name = stream.attributes.get("Name", "")
@@ -171,8 +178,8 @@ class ClientManifest:
                         for ql in stream.qualityLevels
                         if (
                             stream_name,
-                            int(ql.get("Bitrate", -1)),
                             stream_language,
+                            int(ql.get("Bitrate", -1)),
                         )
                         in allowed
                     ]
