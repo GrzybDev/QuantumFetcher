@@ -121,6 +121,12 @@ class DownloadFlow:
                             and episode_id == "J1 - 4K Test"
                         ):
                             trackName = "eng"
+                        elif (
+                            stream_type == StreamType.Audio
+                            and trackName == "eng"
+                            and episode_id != "J1 - 4K Test"
+                        ):
+                            continue
 
                         stream = server_manifest.get_named_stream(
                             trackName,
