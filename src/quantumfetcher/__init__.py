@@ -30,13 +30,23 @@ def main(
     episodes: Annotated[
         str | None, Option(help="Comma-separated list of episode IDs to download")
     ] = None,
-    video_bitrates: Annotated[str | None, Option(help="Video bitrates")] = None,
-    audio_langs: Annotated[str | None, Option(help="Audio languages")] = None,
-    audio_bitrates: Annotated[str | None, Option(help="Audio bitrates")] = None,
-    text_langs: Annotated[str | None, Option(help="Subtitle languages")] = None,
-    text_bitrates: Annotated[str | None, Option(help="Subtitle bitrates")] = None,
+    video_bitrates: Annotated[
+        str | None, Option(help="Comma-seperated list of video bitrates to download")
+    ] = None,
+    audio_langs: Annotated[
+        str | None, Option(help="Comma-seperated list of audio languages to download")
+    ] = None,
+    audio_bitrates: Annotated[
+        str | None, Option(help="Comma-seperated list of audio bitrates to download")
+    ] = None,
+    text_langs: Annotated[
+        str | None, Option(help="Comma-seperated list of text languages to download")
+    ] = None,
+    text_bitrates: Annotated[
+        str | None, Option(help="Comma-seperated list of text bitrates to download")
+    ] = None,
     extract_subtitles: Annotated[
-        bool, Option(help="Extract subtitles to editable format", is_flag=True)
+        bool, Option(help="Extract subtitles to JSON file", is_flag=True)
     ] = False,
     show_formats: Annotated[
         bool,
