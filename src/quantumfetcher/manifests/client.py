@@ -25,13 +25,27 @@ class ClientManifest:
 
         for stream in root.findall("StreamIndex"):
             qualityLevels = []
+            chunks = []
 
             for ql in stream.findall("QualityLevel"):
                 qualityLevels.append(ql.attrib)
 
+            for chunk in stream.findall("c"):
+                if "n" in chunk.attrib and "d" in chunk.attrib:
+                    # If 'n' is present, override the chunk number
+                    chunk_number = int(chunk.attrib["n"])
+
+                    if chunk_number != len(chunks):
+                        raise ValueError(
+                            f"Chunk number mismatch: expected {len(chunks)}, got {chunk_number}"
+                        )
+
+                    # Convert to int and add to qualityLevels
+                    chunks.append(int(chunk.attrib["d"]))
+
             self.__streams.append(
                 SmoothStreamingMedia(
-                    attributes=stream.attrib, qualityLevels=qualityLevels
+                    attributes=stream.attrib, qualityLevels=qualityLevels, chunks=chunks
                 )
             )
 
@@ -43,6 +57,11 @@ class ClientManifest:
 
             for ql in stream.qualityLevels:
                 ET.SubElement(stream_el, "QualityLevel", attrib=ql)
+
+            for idx, chunk in enumerate(stream.chunks):
+                chunk_el = ET.SubElement(stream_el, "c")
+                chunk_el.set("n", str(idx))
+                chunk_el.set("d", str(chunk))
 
         finalxml = ET.tostring(ssm, encoding="unicode", xml_declaration=True)
 
