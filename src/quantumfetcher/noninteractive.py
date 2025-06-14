@@ -1,12 +1,7 @@
 from pathlib import Path
-from typing import Optional
 
 import typer
 
-from quantumfetcher.dataclasses.AudioStream import AudioStream
-from quantumfetcher.dataclasses.TextStream import TextStream
-from quantumfetcher.dataclasses.VideoStream import VideoStream
-from quantumfetcher.enumerators.StreamType import StreamType
 from quantumfetcher.flow import DownloadFlow
 from quantumfetcher.helpers import (
     filter_streams_by_quality_and_language,
@@ -21,11 +16,11 @@ def NonInteractiveMain(
     videoList_path: Path,
     episodes_path: Path,
     episodes: str,
-    video_bitrates: Optional[str],
-    audio_langs: Optional[str],
-    audio_bitrates: Optional[str],
-    text_langs: Optional[str],
-    text_bitrates: Optional[str],
+    video_bitrates: str | None,
+    audio_langs: str | None,
+    audio_bitrates: str | None,
+    text_langs: str | None,
+    text_bitrates: str | None,
     extract_subtitles: bool,
 ):
     videoList = VideoList(gamePath / videoList_path)

@@ -1,5 +1,4 @@
 import json
-from http import server
 from pathlib import Path
 from urllib.parse import unquote, urlparse, urlunparse
 

@@ -1,6 +1,5 @@
 from math import ceil
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
 
 import requests
 from requests.adapters import HTTPAdapter, Retry

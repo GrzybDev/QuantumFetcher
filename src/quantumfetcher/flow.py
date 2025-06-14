@@ -1,6 +1,5 @@
 import re
 
-import typer
 from rich.console import Group
 from rich.live import Live
 from rich.progress import (
