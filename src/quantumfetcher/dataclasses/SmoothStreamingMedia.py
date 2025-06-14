@@ -5,3 +5,4 @@ from dataclasses import dataclass
 class SmoothStreamingMedia:
     attributes: dict[str, str]
     qualityLevels: list[dict[str, str]]
+    chunks: list[int]
