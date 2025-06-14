@@ -148,7 +148,9 @@ class ClientManifest:
     def remove_not_downloaded_streams(self, downloaded_qualities):
         for stream_type, qualities in downloaded_qualities.items():
             for stream in self.__streams.copy():
-                if stream.attributes.get("Type") != stream_type.value:
+                if stream.attributes.get("Type") != (
+                    stream_type.value if stream_type != StreamType.Text else "text"
+                ):
                     continue
 
                 if stream_type == StreamType.Video:
