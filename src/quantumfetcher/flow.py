@@ -103,6 +103,9 @@ class DownloadFlow:
                         if stream:
                             output[StreamType.Video].append((stream, chunks))
                         else:
+                            if episode_id == "J1 - 4K Test":
+                                continue
+
                             self.__progress_stream.console.print(
                                 f"Cannot find Video stream with requested quality for episode {episode_id}, skipping...",
                             )
@@ -120,6 +123,9 @@ class DownloadFlow:
                         if stream:
                             output[stream_type].append((stream, chunks))
                         else:
+                            if episode_id == "J1 - 4K Test":
+                                continue
+
                             self.__progress_stream.console.print(
                                 f"Cannot find {stream_type.name} stream ({ql.name}) with requested quality for episode {episode_id}, skipping...",
                             )
