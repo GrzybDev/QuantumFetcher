@@ -228,3 +228,18 @@ def print_available_formats(videoListPath, episodes):
             [f"- {t} [{t.language.value}]" for t in qualities[StreamType.Text]]
         ),  # type: ignore
     )
+
+
+def update_videolist(videoListPath, serverHost):
+    videoList = VideoList(videoListPath)
+    videoList.patch_videolist(serverHost)
+    # Backed up to videoListPath_original.rmdj
+    typer.echo(
+        f"Successfully patched {videoListPath} to point to {serverHost}!\nOriginal file is backed up to {videoListPath.stem}_original.rmdj"
+    )
+    return videoList
+
+
+def print_videolist(videoListPath):
+    videoList = VideoList(videoListPath)
+    typer.echo(videoList.dump())

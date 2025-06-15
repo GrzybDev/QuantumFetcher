@@ -3,7 +3,11 @@ from typing import Annotated
 
 from typer import Argument, Option, Typer
 
-from quantumfetcher.helpers import print_available_formats
+from quantumfetcher.helpers import (
+    print_available_formats,
+    print_videolist,
+    update_videolist,
+)
 from quantumfetcher.interactive import InteractiveMain
 from quantumfetcher.noninteractive import NonInteractiveMain
 
@@ -58,6 +62,28 @@ def main(
             is_flag=True,
         ),
     ] = False,
+    patch_videolist: Annotated[
+        bool,
+        Option(
+            help=(
+                "Patch videoList.rmdj to point to custom QuantumStreamer compatible server."
+            ),
+            is_flag=True,
+        ),
+    ] = False,
+    patch_videolist_server: Annotated[
+        str | None,
+        Option(
+            help=("Custom streaming server host."),
+        ),
+    ] = "127.0.0.1:10000",
+    dump_videolist: Annotated[
+        bool,
+        Option(
+            help=("Dump videoList.rmdj to console."),
+            is_flag=True,
+        ),
+    ] = False,
 ):
     """
     Main entrypoint. If --episodes is provided, runs in non-interactive mode.
@@ -68,6 +94,15 @@ def main(
         return print_available_formats(
             path / (videolist_path or Path("data/videoList.rmdj")), episodes
         )
+
+    if patch_videolist:
+        return update_videolist(
+            path / (videolist_path or Path("data/videoList.rmdj")),
+            serverHost=patch_videolist_server,
+        )
+
+    if dump_videolist:
+        return print_videolist(path / (videolist_path or Path("data/videoList.rmdj")))
 
     if episodes:
         NonInteractiveMain(
