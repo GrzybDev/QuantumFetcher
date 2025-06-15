@@ -80,6 +80,7 @@ Supported filters are provided below:
 
 | Parameter             | Description                                           |
 |----------------------:|:------------------------------------------------------|
+| --episodes            | Comma-separated list of episode IDs to download       |
 | --video-bitrates      | Comma-seperated list of video bitrates to download    |
 | --audio-langs         | Comma-seperated list of audio languages to download   |
 | --audio-bitrates      | Comma-seperated list of audio bitrates to download    |
