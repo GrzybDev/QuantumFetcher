@@ -10,8 +10,11 @@ from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
 class VideoList:
 
     __videoList: dict[str, str] = {}
+    __path: Path
 
     def __init__(self, path: Path):
+        self.__path = path
+
         # Check if {filename}_original.rmdj file exist
         # if user already installed custom videoList.rmdj
         # the original one will be stored at {filename}_original.rmdj
@@ -64,3 +67,40 @@ class VideoList:
     def get_media_url(self, episode_id, filename) -> str | None:
         base_path = self.get_server_manifest_url(episode_id).rsplit("/", 1)[0]
         return f"{base_path}/{filename}"
+
+    def patch_videolist(self, server_url: str):
+        # QuantumStreamer server URL expects client manifest URL to be
+        # http://<server_url>/<episode-id>/manifest
+
+        # First, check if the _original.rmdj file exists
+        filename_orig = self.__path.with_stem(self.__path.stem + "_original")
+        if not filename_orig.exists():
+            # If it doesn't exist, create a copy of the current videoList
+            self.__path.rename(filename_orig)
+
+        # Now patch the videoList
+        for episode_id, client_manifest_url in self.__videoList.items():
+            # Replace the client manifest URL with the new server URL
+            new_client_manifest_url = f"http://{server_url}/{episode_id}/manifest"
+            self.__videoList[episode_id] = new_client_manifest_url
+
+        # Dump the patched videoList to string
+        patched_video_list = json.dumps(self.__videoList, indent=4).encode()
+
+        # Encrypt the patched videoList
+        encrypted_video_list = bytearray()
+
+        for i, char in enumerate(patched_video_list):
+            encrypted_video_list.append(
+                char ^ RMDJ_ENCRYPTION_KEY[i % len(RMDJ_ENCRYPTION_KEY)]
+            )
+
+        # Write the encrypted videoList to the original file
+        with open(self.__path, "wb") as f:
+            f.write(encrypted_video_list)
+
+    def dump(self) -> str:
+        """
+        Returns the video list as a JSON string.
+        """
+        return json.dumps(self.__videoList, indent=4)
