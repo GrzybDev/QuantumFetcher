@@ -3,7 +3,7 @@ from pathlib import Path
 import typer
 
 from quantumfetcher import surveys
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.enumerators.stream_type import StreamType
 from quantumfetcher.flow import DownloadFlow
 from quantumfetcher.videolist import VideoList
 

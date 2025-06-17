@@ -1,9 +1,9 @@
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
-from quantumfetcher.dataclasses.SmoothStreamingMedia import SmoothStreamingMedia
-from quantumfetcher.enumerators.Language import Language
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.dataclasses.smooth_stream_media import SmoothStreamingMedia
+from quantumfetcher.enumerators.language import Language
+from quantumfetcher.enumerators.stream_type import StreamType
 
 
 class ClientManifest:

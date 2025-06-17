@@ -4,12 +4,12 @@ from collections.abc import Callable
 import typer
 from rich.progress import track
 
-from quantumfetcher.dataclasses.AudioStream import AudioStream
-from quantumfetcher.dataclasses.TextStream import TextStream
-from quantumfetcher.dataclasses.VideoStream import VideoStream
+from quantumfetcher.dataclasses.stream_audio import AudioStream
+from quantumfetcher.dataclasses.stream_text import TextStream
+from quantumfetcher.dataclasses.stream_video import VideoStream
 from quantumfetcher.downloader import fetch_manifest
-from quantumfetcher.enumerators.ManifestType import ManifestType
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.enumerators.manifest_type import ManifestType
+from quantumfetcher.enumerators.stream_type import StreamType
 from quantumfetcher.videolist import VideoList
 
 

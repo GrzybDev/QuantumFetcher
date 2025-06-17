@@ -4,7 +4,7 @@ from pathlib import Path
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
-from quantumfetcher.enumerators.ManifestType import ManifestType
+from quantumfetcher.enumerators.manifest_type import ManifestType
 from quantumfetcher.manifests.client import ClientManifest
 from quantumfetcher.manifests.server import ServerManifest
 

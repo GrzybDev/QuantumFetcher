@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
 from quantumfetcher.constants import XML_NS
-from quantumfetcher.dataclasses.SmoothStream import SmoothStream
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.dataclasses.smooth_stream import SmoothStream
+from quantumfetcher.enumerators.stream_type import StreamType
 
 
 class ServerManifest:

@@ -16,7 +16,7 @@ from rich.progress import (
 )
 
 from quantumfetcher.downloader import download_media
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.enumerators.stream_type import StreamType
 from quantumfetcher.subtitles import extract_subtitles
 
 

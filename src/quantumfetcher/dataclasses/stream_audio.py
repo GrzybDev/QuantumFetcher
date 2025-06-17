@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from quantumfetcher.enumerators.Language import Language
+from quantumfetcher.enumerators.language import Language
 
 
 @dataclass

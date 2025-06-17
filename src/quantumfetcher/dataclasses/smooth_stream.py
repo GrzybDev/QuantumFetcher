@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.enumerators.stream_type import StreamType
 
 
 @dataclass

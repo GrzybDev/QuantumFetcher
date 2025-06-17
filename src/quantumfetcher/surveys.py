@@ -3,7 +3,7 @@ import sys
 import inquirer
 import typer
 
-from quantumfetcher.enumerators.StreamType import StreamType
+from quantumfetcher.enumerators.stream_type import StreamType
 from quantumfetcher.helpers import fetch_manifests, get_quality_levels
 
 
