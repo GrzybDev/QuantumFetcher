@@ -1,12 +1,18 @@
 import json
 from pathlib import Path
+from pprint import pprint
+from urllib.parse import urlparse, urlunparse
 
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress
 
 from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
 
 
 class VideoList:
+
+    @property
+    def episode_list(self) -> dict[str, str]:
+        return self.__videoList
 
     def __init__(self, path: Path):
         # Check if {filename}_original.rmdj file exist
@@ -31,3 +37,5 @@ class VideoList:
 
                 self.__videoList = json.loads(decrypted_list_raw)
 
+    def dump(self):
+        pprint(self.__videoList)

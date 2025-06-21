@@ -27,6 +27,13 @@ def main(
             readable=True,
         ),
     ] = Path("data/videoList.rmdj"),
+    dump_videolist: Annotated[
+        bool,
+        typer.Option(
+            help="Dump videoList.rmdj to console",
+            is_flag=True,
+        ),
+    ] = False,
 ):
     if path is None:
         # Ask user for path to root game folder
@@ -37,6 +44,9 @@ def main(
         videolist_path = path / "data" / "videoList.rmdj"
 
     video_list = VideoList(videolist_path)
+
+    if dump_videolist:
+        return video_list.dump()
 
 
 if __name__ == "__main__":
