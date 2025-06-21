@@ -14,6 +14,8 @@ dependencies = [
 [tool.poetry]
 packages = [{include = "quantumfetcher", from = "src"}]
 
+[tool.poetry.scripts]
+quantumfetcher = "quantumfetcher:app"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
