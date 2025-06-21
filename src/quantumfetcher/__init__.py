@@ -34,8 +34,21 @@ def main(
             is_flag=True,
         ),
     ] = None,
+    patch_videolist: Annotated[
+        bool,
+        typer.Option(
+            help="Patch videoList.rmdj to point to custom QuantumStreamer compatible server",
+            is_flag=True,
+        ),
+    ] = False,
+    patch_videolist_server: Annotated[
+        str,
+        typer.Option(
+            help="Custom streaming server host",
+        ),
+    ] = "127.0.0.1:10000",
 ):
-    if path is None and not dump_videolist_path:
+    if path is None and not dump_videolist_path and not patch_videolist:
         # Ask user for path to root game folder
         path = typer.prompt("Enter path to root game folder", type=Path)
 
@@ -54,6 +67,9 @@ def main(
             dump_videolist_path = None
 
         return video_list.dump(dump_videolist_path)
+
+    if patch_videolist:
+        return video_list.patch(patch_videolist_server)
 
 
 if __name__ == "__main__":
