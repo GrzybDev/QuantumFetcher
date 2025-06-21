@@ -47,8 +47,22 @@ def main(
             help="Custom streaming server host",
         ),
     ] = "127.0.0.1:10000",
+    build_videolist_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Build videoList.rmdj from specified JSON file",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
 ):
-    if path is None and not dump_videolist_path and not patch_videolist:
+    if (
+        path is None
+        and not dump_videolist_path
+        and not patch_videolist
+        and not build_videolist_path
+    ):
         # Ask user for path to root game folder
         path = typer.prompt("Enter path to root game folder", type=Path)
 
@@ -58,6 +72,9 @@ def main(
         # If no videoList.rmdj is provided, use the default one
         videolist_path = path / "data" / "videoList.rmdj"
         is_game_dir = True
+
+    if build_videolist_path:
+        return VideoList.build(build_videolist_path, videolist_path)
 
     video_list = VideoList(videolist_path, is_game_dir)
 
