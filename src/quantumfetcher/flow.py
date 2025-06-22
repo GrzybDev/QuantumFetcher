@@ -30,12 +30,19 @@ class Flow:
         self.__fetch_text_bitrates: list[str] | None = kwargs["text_bitrates"]
 
         show_formats = kwargs["show_formats"]
+        extract_subtitles = kwargs["extract_subtitles"]
 
         self.__fetch_manifests()
         self.__prepare_streams()
 
         if show_formats:
             return self.__dump_formats()
+
+        if self.__interactive and not extract_subtitles:
+            if not self.__fetch_text_streams:
+                pass
+            else:
+                extract_subtitles = Prompt.extract_subtitles()
 
         self.__downloader.download(
             video_list=self.__video_list,
@@ -44,6 +51,7 @@ class Flow:
             video_streams=self.__fetch_video_streams,
             audio_streams=self.__fetch_audio_streams,
             text_streams=self.__fetch_text_streams,
+            extract_subtitles=extract_subtitles,
         )
 
     def __fetch_manifests(self):

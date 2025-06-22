@@ -96,3 +96,19 @@ class Prompt:
         filtered_answers[StreamType.Text] = answers.get(StreamType.Text, [])
 
         return filtered_answers
+
+    @staticmethod
+    def extract_subtitles() -> bool:
+        questions = [
+            inquirer.Confirm(
+                "extract_subtitles",
+                message="Do you want to extract subtitles?",
+                default=True,
+            )
+        ]
+        answers = inquirer.prompt(questions)
+
+        if answers is None or "extract_subtitles" not in answers:
+            raise typer.Abort()
+
+        return answers["extract_subtitles"]

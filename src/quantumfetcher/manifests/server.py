@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ET
 
-from quantumfetcher.constants import XML_NS
+from quantumfetcher.constants import SMIL_NS
 from quantumfetcher.dataclasses.stream import ServerStream
 from quantumfetcher.enumerators.type_stream import StreamType
 from quantumfetcher.manifests.base import BaseManifest
@@ -21,7 +21,7 @@ class ServerManifest(BaseManifest):
     def __parse_headers(self, root):
         self.__headers = {}
 
-        for meta in root.find("smil:head", XML_NS).findall("smil:meta", XML_NS):
+        for meta in root.find("smil:head", SMIL_NS).findall("smil:meta", SMIL_NS):
             name = meta.attrib.get("name")
             content = meta.attrib.get("content")
 
@@ -30,7 +30,7 @@ class ServerManifest(BaseManifest):
 
     def __parse_media_streams(self, root):
         self.__streams = []
-        switch = root.find("smil:body/smil:switch", XML_NS)
+        switch = root.find("smil:body/smil:switch", SMIL_NS)
 
         if switch is not None:
             for stream in switch:
@@ -39,7 +39,7 @@ class ServerManifest(BaseManifest):
                 attributes = stream.attrib
                 params = {}
 
-                for param in stream.findall("smil:param", XML_NS):
+                for param in stream.findall("smil:param", SMIL_NS):
                     name = param.attrib.get("name")
                     value = param.attrib.get("value")
                     if name and value:
