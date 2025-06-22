@@ -107,6 +107,13 @@ def main(
             help="Comma-seperated list of text bitrates to download",
         ),
     ] = None,
+    show_formats: Annotated[
+        bool,
+        typer.Option(
+            help="Show available formats for video/audio/text streams",
+            is_flag=True,
+        ),
+    ] = False,
 ):
     if (
         path is None
@@ -150,6 +157,7 @@ def main(
         audio_bitrates=audio_bitrates.split(",") if audio_bitrates else None,
         text_langs=text_languages.split(",") if text_languages else None,
         text_bitrates=text_bitrates.split(",") if text_bitrates else None,
+        show_formats=show_formats,
     )
 
 
