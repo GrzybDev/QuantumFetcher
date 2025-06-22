@@ -49,9 +49,17 @@ def main(
             help="Custom streaming server host",
         ),
     ] = "127.0.0.1:10000",
+    interactive: Annotated[
+        bool,
+        typer.Option(
+            help="Run in interactive mode",
+            is_flag=True,
+        ),
+    ] = False,
 ):
     if path is None:
         # Ask user for path to root game folder
+        interactive = True
         path = Prompt.get_game_path()
 
     if path and videolist_path == Path("data/videoList.rmdj"):
@@ -66,7 +74,10 @@ def main(
     if patch_videolist:
         return video_list.patch(patch_videolist_server)
 
-    Flow(video_list)
+    Flow(
+        interactive=interactive,
+        video_list=video_list,
+    )
 
 
 if __name__ == "__main__":
