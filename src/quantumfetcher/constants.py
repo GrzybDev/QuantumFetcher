@@ -32,3 +32,5 @@ RMDJ_ENCRYPTION_KEY = [
     0x40,
     0xF1,
 ]
+
+XML_NS = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
