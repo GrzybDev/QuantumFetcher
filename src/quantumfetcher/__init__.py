@@ -71,6 +71,42 @@ def main(
             help="Comma-separated list of episode IDs to fetch. If not provided, all episodes will be fetched"
         ),
     ] = None,
+    video_resolutions: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of video resolutions to download (e.g., 720p, 1080p, 2160p)",
+        ),
+    ] = None,
+    video_bitrates: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of video bitrates to download",
+        ),
+    ] = None,
+    audio_languages: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of audio languages to download",
+        ),
+    ] = None,
+    audio_bitrates: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of audio bitrates to download",
+        ),
+    ] = None,
+    text_languages: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of text languages to download",
+        ),
+    ] = None,
+    text_bitrates: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-seperated list of text bitrates to download",
+        ),
+    ] = None,
 ):
     if (
         path is None
@@ -108,6 +144,12 @@ def main(
         interactive=interactive,
         video_list=video_list,
         episodes=episodes.split(",") if episodes else None,
+        video_resolutions=video_resolutions.split(",") if video_resolutions else None,
+        video_bitrates=video_bitrates.split(",") if video_bitrates else None,
+        audio_langs=audio_languages.split(",") if audio_languages else None,
+        audio_bitrates=audio_bitrates.split(",") if audio_bitrates else None,
+        text_langs=text_languages.split(",") if text_languages else None,
+        text_bitrates=text_bitrates.split(",") if text_bitrates else None,
     )
 
 
