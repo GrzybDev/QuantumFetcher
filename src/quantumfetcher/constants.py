@@ -7,3 +7,4 @@ RMDJ_ENCRYPTION_KEY = [
 
 XML_NS = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
 USER_AGENT = "Malibu/1.0"
+CHUNK_SIZE = 1024 * 1024  # 1 MiB

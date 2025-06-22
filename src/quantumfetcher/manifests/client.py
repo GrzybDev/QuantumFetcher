@@ -114,3 +114,28 @@ class ClientManifest(BaseManifest):
                 )
 
         return streams
+
+    def list_streams(self, mediaType: StreamType):
+        match mediaType:
+            case StreamType.Video:
+                return self.list_video_streams()
+            case StreamType.Audio:
+                return self.list_audio_streams()
+            case StreamType.Text:
+                return self.list_text_streams()
+
+    def get_chunks_count(self, mediaType: StreamType, trackName=None):
+        for stream in self.__streams:
+            if (
+                stream.attributes.get("Type") != mediaType.value
+                if mediaType != StreamType.Text
+                else "text"
+            ):
+                continue
+
+            if trackName and stream.attributes.get("Name") != trackName:
+                continue
+
+            return int(stream.attributes.get("Chunks"))  # type: ignore
+        else:
+            return -1
