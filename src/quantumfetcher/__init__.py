@@ -114,6 +114,9 @@ def main(
             is_flag=True,
         ),
     ] = False,
+    extract_subtitles: Annotated[
+        bool, typer.Option(help="Extract subtitles to JSON file", is_flag=True)
+    ] = False,
 ):
     if path is None:
         # Ask user for path to root game folder
@@ -148,6 +151,7 @@ def main(
         text_langs=text_languages.split(",") if text_languages else None,
         text_bitrates=text_bitrates.split(",") if text_bitrates else None,
         show_formats=show_formats,
+        extract_subtitles=extract_subtitles,
     )
 
 

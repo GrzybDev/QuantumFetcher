@@ -33,6 +33,8 @@ RMDJ_ENCRYPTION_KEY = [
     0xF1,
 ]
 
-XML_NS = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
+SMIL_NS = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
+TTML_NS = {"xmlns": "http://www.w3.org/ns/ttml"}
+
 USER_AGENT = "Malibu/1.0"
 CHUNK_SIZE = 1024 * 1024  # 1 MiB
