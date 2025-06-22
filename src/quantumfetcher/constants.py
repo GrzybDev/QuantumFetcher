@@ -6,3 +6,4 @@ RMDJ_ENCRYPTION_KEY = [
 # fmt: on
 
 XML_NS = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
+USER_AGENT = "Malibu/1.0"
