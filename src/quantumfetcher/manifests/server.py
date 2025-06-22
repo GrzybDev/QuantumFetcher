@@ -52,3 +52,42 @@ class ServerManifest(BaseManifest):
                         parameters=params,
                     )
                 )
+
+    def __get_all_bitrates(self, type, trackName=None):
+        output = []
+
+        for stream in self.__streams:
+            if stream.type != type:
+                continue
+
+            if trackName and stream.parameters.get("trackName") != trackName:
+                continue
+
+            output.append(int(stream.attributes.get("systemBitrate", -1)))
+
+        return output
+
+    def __get_stream(self, type, bitrate, trackName=None):
+        for stream in self.__streams:
+            if stream.type != type:
+                continue
+
+            if trackName and stream.parameters.get("trackName") != trackName:
+                continue
+
+            if int(stream.attributes.get("systemBitrate", -1)) == bitrate:
+                return stream
+
+    def __get_closest_lte(self, vals, target):
+        filtered = [n for n in vals if n <= target]
+        return max(filtered) if filtered else None
+
+    def get_video_stream(self, bitrate):
+        bitrates = self.__get_all_bitrates(StreamType.Video)
+        closest_match = self.__get_closest_lte(bitrates, bitrate)
+        return self.__get_stream(StreamType.Video, closest_match)
+
+    def get_named_stream(self, name, type, bitrate):
+        bitrates = self.__get_all_bitrates(type, trackName=name)
+        closest_match = self.__get_closest_lte(bitrates, bitrate)
+        return self.__get_stream(type, closest_match, trackName=name)
