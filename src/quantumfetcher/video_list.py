@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import typer
 
@@ -95,3 +96,11 @@ class VideoList:
         # Write the encrypted videoList to the output file
         with open(output_path, "wb") as f:
             f.write(encrypted_video_list)
+
+    def get_server_manifest_url(self, episode_id: str) -> str:
+        client_manifest_url = self.__videoList.get(episode_id)
+
+        temp_url = urlparse(client_manifest_url)._replace(query="")
+        manifestUrl = str(urlunparse(temp_url)).replace("/manifest", "")
+
+        return manifestUrl
