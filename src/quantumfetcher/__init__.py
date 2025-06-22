@@ -65,6 +65,12 @@ def main(
             is_flag=True,
         ),
     ] = False,
+    episodes: Annotated[
+        str | None,
+        typer.Option(
+            help="Comma-separated list of episode IDs to fetch. If not provided, all episodes will be fetched"
+        ),
+    ] = None,
 ):
     if (
         path is None
@@ -101,6 +107,7 @@ def main(
     Flow(
         interactive=interactive,
         video_list=video_list,
+        episodes=episodes.split(",") if episodes else None,
     )
 
 
