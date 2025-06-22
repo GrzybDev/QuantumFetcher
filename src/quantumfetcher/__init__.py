@@ -58,6 +58,13 @@ def main(
             readable=True,
         ),
     ] = None,
+    interactive: Annotated[
+        bool,
+        typer.Option(
+            help="Run in interactive mode",
+            is_flag=True,
+        ),
+    ] = False,
 ):
     if (
         path is None
@@ -66,6 +73,7 @@ def main(
         and not build_videolist_path
     ):
         # Ask user for path to root game folder
+        interactive = True
         path = Prompt.get_game_path()
 
     is_game_dir = False
@@ -90,7 +98,10 @@ def main(
     if patch_videolist:
         return video_list.patch(patch_videolist_server)
 
-    Flow(video_list)
+    Flow(
+        interactive=interactive,
+        video_list=video_list,
+    )
 
 
 if __name__ == "__main__":
