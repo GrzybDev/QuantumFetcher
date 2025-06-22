@@ -104,3 +104,7 @@ class VideoList:
         manifestUrl = str(urlunparse(temp_url)).replace("/manifest", "")
 
         return manifestUrl
+
+    def get_media_url(self, episode_id, filename) -> str:
+        base_path = self.get_server_manifest_url(episode_id).rsplit("/", 1)[0]
+        return f"{base_path}/{filename}"
