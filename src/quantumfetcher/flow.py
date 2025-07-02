@@ -8,8 +8,10 @@ from quantumfetcher.video_list import VideoList
 
 class Flow:
 
-    def __init__(self, video_list: VideoList):
+    def __init__(self, interactive: bool, video_list: VideoList, **kwargs) -> None:
         self.__downloader = Downloader()
+
+        self.__interactive = interactive
         self.__video_list = video_list
 
         self.__fetch_manifests()
