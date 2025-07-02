@@ -71,6 +71,15 @@ def main(
             help="Comma-separated list of episode IDs to fetch. If not provided, all episodes will be fetched"
         ),
     ] = None,
+    episodes_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Path to where episodes will be saved",
+            dir_okay=True,
+            writable=True,
+            readable=True,
+        ),
+    ] = Path("videos/episodes"),
     video_resolutions: Annotated[
         str | None,
         typer.Option(
@@ -132,6 +141,10 @@ def main(
         videolist_path = path / "data" / "videoList.rmdj"
         is_game_dir = True
 
+    if path and episodes_path == Path("videos/episodes"):
+        # If no episodes path is provided, use the default one
+        episodes_path = path / "videos" / "episodes"
+
     if build_videolist_path:
         return VideoList.build(build_videolist_path, videolist_path)
 
@@ -151,6 +164,7 @@ def main(
         interactive=interactive,
         video_list=video_list,
         episodes=episodes.split(",") if episodes else None,
+        episodes_path=episodes_path,
         video_resolutions=video_resolutions.split(",") if video_resolutions else None,
         video_bitrates=video_bitrates.split(",") if video_bitrates else None,
         audio_langs=audio_languages.split(",") if audio_languages else None,
