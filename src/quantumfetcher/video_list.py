@@ -43,3 +43,34 @@ class VideoList:
         # Dump the videoList to the specified path
         with open(dump_path, "w") as f:
             json.dump(self.__videoList, f, indent=4)
+
+    def patch(self, server_url: str):
+        # QuantumStreamer expects client manifest URL to be
+        # http://<server_url>/<episode-id>/manifest
+
+        # First, check if the _original.rmdj file exists
+        filename_orig = self.__path.with_stem(self.__path.stem + "_original")
+        if not filename_orig.exists():
+            # If it doesn't exist, create a copy of the current videoList
+            self.__path.rename(filename_orig)
+
+        # Now patch the videoList
+        for episode_id in self.__videoList.keys():
+            # Replace the client manifest URL with the new server URL
+            new_client_manifest_url = f"http://{server_url}/{episode_id}/manifest"
+            self.__videoList[episode_id] = new_client_manifest_url
+
+        # Dump the patched videoList to string
+        patched_video_list = json.dumps(self.__videoList, indent=4).encode()
+
+        # Encrypt the patched videoList
+        encrypted_video_list = bytearray()
+
+        for i, char in enumerate(patched_video_list):
+            encrypted_video_list.append(
+                char ^ RMDJ_ENCRYPTION_KEY[i % len(RMDJ_ENCRYPTION_KEY)]
+            )
+
+        # Write the encrypted videoList to the original file
+        with open(self.__path, "wb") as f:
+            f.write(encrypted_video_list)
