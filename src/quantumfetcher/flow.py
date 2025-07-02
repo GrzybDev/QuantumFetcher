@@ -27,11 +27,14 @@ class Flow:
         # If episodes to fetch is provided, filter the video list
         # Print warning if episodes specified are not in the video list
         if self.__episodes_to_fetch is not None:
-            episodes = {
-                episode_id: url
-                for episode_id, url in episodes.items()
-                if episode_id in self.__episodes_to_fetch
-            }
+            if self.__episodes_to_fetch == ["all"]:
+                self.__episodes_to_fetch = list(episodes.keys())
+            else:
+                episodes = {
+                    episode_id: url
+                    for episode_id, url in episodes.items()
+                    if episode_id in self.__episodes_to_fetch
+                }
         elif self.__interactive:
             self.__episodes_to_fetch = Prompt.select_episodes(self.__video_list)
             episodes = {
