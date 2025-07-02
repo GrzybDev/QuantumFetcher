@@ -3,6 +3,7 @@ from typing import Annotated
 
 import typer
 
+from quantumfetcher.flow import Flow
 from quantumfetcher.video_list import VideoList
 
 app = typer.Typer()
@@ -87,6 +88,8 @@ def main(
 
     if patch_videolist:
         return video_list.patch(patch_videolist_server)
+
+    Flow(video_list)
 
 
 if __name__ == "__main__":

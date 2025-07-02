@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import typer
 
@@ -7,6 +8,10 @@ from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
 
 
 class VideoList:
+
+    @property
+    def episode_list(self) -> dict[str, str]:
+        return self.__videoList
 
     def __init__(self, path: Path, is_game_dir: bool = False):
         self.__path = path
@@ -91,3 +96,11 @@ class VideoList:
         # Write the encrypted videoList to the output file
         with open(output_path, "wb") as f:
             f.write(encrypted_video_list)
+
+    def get_server_manifest_url(self, episode_id: str) -> str:
+        client_manifest_url = self.__videoList.get(episode_id)
+
+        temp_url = urlparse(client_manifest_url)._replace(query="")
+        manifestUrl = str(urlunparse(temp_url)).replace("/manifest", "")
+
+        return manifestUrl
