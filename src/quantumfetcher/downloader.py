@@ -1,3 +1,4 @@
+import re
 import time
 from math import ceil
 from pathlib import Path
@@ -29,6 +30,7 @@ from quantumfetcher.enumerators.type_stream import StreamType
 from quantumfetcher.manifests.base import BaseManifest
 from quantumfetcher.manifests.client import ClientManifest
 from quantumfetcher.manifests.server import ServerManifest
+from quantumfetcher.subtitles import extract_subtitles
 from quantumfetcher.video_list import VideoList
 
 
@@ -102,6 +104,7 @@ class Downloader:
         video_streams: list,
         audio_streams: list,
         text_streams: list,
+        extract_subtitles: bool,
     ):
         self.__video_list = video_list
         self.__manifests = manifests
@@ -109,6 +112,7 @@ class Downloader:
         self.__streams_video = video_streams
         self.__streams_audio = audio_streams
         self.__streams_text = text_streams
+        self.__extract_subtitles = extract_subtitles
 
         with Live(self.__progress_group, refresh_per_second=10):
             task_id = self.__progress_overall.add_task(
@@ -285,6 +289,26 @@ class Downloader:
             f"[{episode_id}] Downloading {stream_type.value} media file: {filename}"
         )
         self.__download_media(media_url, chunks, episode_path / filename)
+
+        if stream_type == StreamType.Text and self.__extract_subtitles:
+            self.__progress_stream.console.log(
+                f"[{episode_id}] Extracting subtitles from {filename}..."
+            )
+            match = re.match(r"J(\d).*", episode_id)
+            episode_id_str = "-1"
+
+            if match:
+                episode_id_str = match.group(1)
+
+            extract_subtitles(
+                episode_path / filename,
+                episode_num=int(episode_id_str),
+                track_name=stream.parameters.get("trackName", "unknown"),
+            )
+
+            self.__progress_stream.console.log(
+                f"[{episode_id}] Finished extracting subtitles from {filename}."
+            )
 
     def __download_media(self, mediaUrl: str, chunks: int, outputPath: Path):
         progress_media = self.__progress_media.add_task(
