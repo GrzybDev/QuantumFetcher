@@ -189,6 +189,12 @@ class Downloader:
 
             self.__progress_stream.update(task_id, advance=1)
 
+        client_manifest.save(episode_path / client_manifest_path, streams_to_download)
+        server_manifest.save(
+            episode_path / self.__video_list.get_server_manifest_name(episode_id),
+            streams_to_download,
+        )
+
         for media_task in self.__progress_media.tasks:
             self.__progress_media.remove_task(media_task.id)
 
