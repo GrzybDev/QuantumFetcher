@@ -149,6 +149,15 @@ class Downloader:
         for _, streams in media_to_download.items():
             streams_to_download.extend(streams)
 
+        client_manifest, server_manifest = self.__get_episode_manifests(episode_id)
+        client_manifest_path = server_manifest.get_client_manifest_path()
+
+        if client_manifest_path is None:
+            self.__progress_stream.console.log(
+                f"[red]Error:[/red] Client manifest path not found for episode {episode_id}."
+            )
+            return
+
         task_id = self.__progress_stream.add_task(
             f"Downloading episode files for {episode_id}...",
             total=len(streams_to_download),
