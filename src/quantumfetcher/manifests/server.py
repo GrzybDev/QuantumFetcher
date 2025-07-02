@@ -94,3 +94,6 @@ class ServerManifest(BaseManifest):
 
     def save(self, path, streams):
         pass
+
+    def get_client_manifest_path(self) -> str | None:
+        return self.__headers.get("clientManifestRelativePath")
