@@ -114,3 +114,12 @@ class ClientManifest(BaseManifest):
                 )
 
         return streams
+
+    def list_streams(self, mediaType: StreamType):
+        match mediaType:
+            case StreamType.Video:
+                return self.list_video_streams()
+            case StreamType.Audio:
+                return self.list_audio_streams()
+            case StreamType.Text:
+                return self.list_text_streams()
