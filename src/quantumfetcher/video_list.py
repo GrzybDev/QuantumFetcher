@@ -74,3 +74,20 @@ class VideoList:
         # Write the encrypted videoList to the original file
         with open(self.__path, "wb") as f:
             f.write(encrypted_video_list)
+
+    @staticmethod
+    def build(json_path: Path, output_path: Path):
+        with open(json_path, "r") as f:
+            video_list = json.load(f)
+
+        # Encrypt the videoList
+        encrypted_video_list = bytearray()
+
+        for i, char in enumerate(json.dumps(video_list, indent=4).encode()):
+            encrypted_video_list.append(
+                char ^ RMDJ_ENCRYPTION_KEY[i % len(RMDJ_ENCRYPTION_KEY)]
+            )
+
+        # Write the encrypted videoList to the output file
+        with open(output_path, "wb") as f:
+            f.write(encrypted_video_list)
