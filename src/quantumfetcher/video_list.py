@@ -105,6 +105,18 @@ class VideoList:
 
         return manifestUrl
 
+    def get_server_manifest_name(self, episode_id: str) -> str:
+        server_manifest_url = self.get_server_manifest_url(episode_id)
+        return server_manifest_url.split("/")[-1]
+
+    def get_client_manifest_name(self, episode_id: str) -> str:
+        client_manifest_url = self.__videoList.get(episode_id)
+        if not client_manifest_url:
+            raise ValueError(f"No client manifest URL found for episode {episode_id}")
+
+        parsed_url = urlparse(client_manifest_url)
+        return Path(parsed_url.path).name
+
     def get_media_url(self, episode_id, filename) -> str:
         base_path = self.get_server_manifest_url(episode_id).rsplit("/", 1)[0]
         return f"{base_path}/{filename}"
