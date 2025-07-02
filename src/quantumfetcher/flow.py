@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from rich.progress import Progress
 
 from quantumfetcher.downloader import Downloader
@@ -18,6 +20,7 @@ class Flow:
         self.__video_list = video_list
 
         self.__episodes_to_fetch: list[str] | None = kwargs["episodes"]
+        self.__episodes_path: Path = kwargs["episodes_path"]
 
         self.__fetch_video_resolutions: list[str] | None = kwargs["video_resolutions"]
         self.__fetch_video_bitrates: list[str] | None = kwargs["video_bitrates"]
@@ -33,6 +36,15 @@ class Flow:
 
         if show_formats:
             return self.__dump_formats()
+
+        self.__downloader.download(
+            video_list=self.__video_list,
+            manifests=self.__manifests,
+            episodes_path=self.__episodes_path,
+            video_streams=self.__fetch_video_streams,
+            audio_streams=self.__fetch_audio_streams,
+            text_streams=self.__fetch_text_streams,
+        )
 
     def __fetch_manifests(self):
         self.__manifests: dict[str, dict[ManifestType, BaseManifest]] = {}
