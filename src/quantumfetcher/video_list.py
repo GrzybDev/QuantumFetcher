@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import typer
+
 from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
 
 
@@ -32,3 +34,12 @@ class VideoList:
         with open(path, "rb") as f:
             decrypted_list_raw = self.__xor_bytes(f.read())
             self.__videoList = json.loads(decrypted_list_raw)
+
+    def dump(self, dump_path: Path | None = None):
+        if dump_path is None:
+            typer.echo(json.dumps(self.__videoList, indent=4))
+            return
+
+        # Dump the videoList to the specified path
+        with open(dump_path, "w") as f:
+            json.dump(self.__videoList, f, indent=4)
