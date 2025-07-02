@@ -4,6 +4,7 @@ from typing import Annotated
 import typer
 
 from quantumfetcher.flow import Flow
+from quantumfetcher.prompt import Prompt
 from quantumfetcher.video_list import VideoList
 
 app = typer.Typer()
@@ -65,7 +66,7 @@ def main(
         and not build_videolist_path
     ):
         # Ask user for path to root game folder
-        path = typer.prompt("Enter path to root game folder", type=Path)
+        path = Prompt.get_game_path()
 
     is_game_dir = False
 
