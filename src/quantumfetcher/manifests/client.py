@@ -1,6 +1,10 @@
 import xml.etree.ElementTree as ET
 
 from quantumfetcher.dataclasses.stream import ClientStream
+from quantumfetcher.dataclasses.stream_audio import AudioStream
+from quantumfetcher.dataclasses.stream_text import TextStream
+from quantumfetcher.dataclasses.stream_video import VideoStream
+from quantumfetcher.enumerators.language import Language
 from quantumfetcher.enumerators.type_stream import StreamType
 from quantumfetcher.manifests.base import BaseManifest
 
@@ -50,3 +54,63 @@ class ClientManifest(BaseManifest):
                     chunks=chunks,
                 )
             )
+
+    def list_video_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "video":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    VideoStream(
+                        width=int(ql.get("MaxWidth", -1)),
+                        height=int(ql.get("MaxHeight", -1)),
+                        bitrate=int(ql.get("Bitrate", -1)),
+                        codec=ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
+
+    def list_audio_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "audio":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    AudioStream(
+                        name=stream.attributes.get("Name", ""),
+                        language=Language(stream.attributes.get("Language", "unk")),
+                        bitrate=int(ql.get("Bitrate", -1)),
+                        samplingRate=int(ql.get("SamplingRate", -1)),
+                        channels=int(ql.get("Channels", -1)),
+                        bitsPerSample=int(ql.get("BitsPerSample", -1)),
+                        codec=ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
+
+    def list_text_streams(self):
+        streams = []
+
+        for stream in self.__streams:
+            if stream.attributes.get("Type") != "text":
+                continue
+
+            for ql in stream.qualityLevels:
+                streams.append(
+                    TextStream(
+                        name=stream.attributes.get("Name", ""),
+                        language=Language(stream.attributes.get("Language", "unk")),
+                        bitrate=int(ql.get("Bitrate", -1)),
+                        codec=ql.get("FourCC", ""),
+                    )
+                )
+
+        return streams
