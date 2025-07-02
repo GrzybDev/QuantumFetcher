@@ -26,8 +26,13 @@ class Flow:
         self.__fetch_text_langs: list[str] | None = kwargs["text_langs"]
         self.__fetch_text_bitrates: list[str] | None = kwargs["text_bitrates"]
 
+        show_formats = kwargs["show_formats"]
+
         self.__fetch_manifests()
         self.__prepare_streams()
+
+        if show_formats:
+            return self.__dump_formats()
 
     def __fetch_manifests(self):
         self.__manifests: dict[str, dict[ManifestType, BaseManifest]] = {}
@@ -190,4 +195,38 @@ class Flow:
         self.__fetch_text_streams = deduplicate_streams(
             sorted(text_streams, key=lambda x: (x.name, -x.bitrate)),
             key_func=lambda x: x.name,
+        )
+
+    def __dump_formats(self):
+        qualities = get_streams(self.__manifests)
+
+        video_streams = self.__fetch_video_streams or qualities[StreamType.Video]
+        audio_streams = self.__fetch_audio_streams or qualities[StreamType.Audio]
+        text_streams = self.__fetch_text_streams or qualities[StreamType.Text]
+
+        video_streams = deduplicate_streams(
+            video_streams, key_func=lambda x: x.height, reverse=True
+        )
+        audio_streams = deduplicate_streams(
+            audio_streams, key_func=lambda x: (x.language.name, -x.bitrate)
+        )
+        text_streams = deduplicate_streams(
+            text_streams, key_func=lambda x: (x.language.name, -x.bitrate)
+        )
+
+        print(
+            "Available video formats:\n"
+            + "\n".join([f"- {v}" for v in qualities[StreamType.Video]]),
+        )
+        print(
+            "Available audio languages:\n"
+            + "\n".join(
+                [f"- {a} [{a.language.value}]" for a in qualities[StreamType.Audio]]
+            ),  # type: ignore
+        )
+        print(
+            "Available text formats:\n"
+            + "\n".join(
+                [f"- {t} [{t.language.value}]" for t in qualities[StreamType.Text]]
+            ),  # type: ignore
         )
