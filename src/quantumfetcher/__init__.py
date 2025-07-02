@@ -27,8 +27,15 @@ def main(
             readable=True,
         ),
     ] = Path("data/videoList.rmdj"),
+    dump_videolist_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Dump videoList.rmdj to specified file or stdout if '-' is provided",
+            is_flag=True,
+        ),
+    ] = None,
 ):
-    if path is None:
+    if path is None and not dump_videolist_path:
         # Ask user for path to root game folder
         path = typer.prompt("Enter path to root game folder", type=Path)
 
@@ -40,6 +47,13 @@ def main(
         is_game_dir = True
 
     video_list = VideoList(videolist_path, is_game_dir)
+
+    if dump_videolist_path:
+        if dump_videolist_path == Path("-"):
+            # If dump_videolist_path is "-", print to stdout
+            dump_videolist_path = None
+
+        return video_list.dump(dump_videolist_path)
 
 
 if __name__ == "__main__":
