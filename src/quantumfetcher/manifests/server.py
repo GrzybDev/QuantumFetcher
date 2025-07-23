@@ -2,6 +2,9 @@ import xml.etree.ElementTree as ET
 
 from quantumfetcher.constants import SMIL_NS
 from quantumfetcher.dataclasses.stream import ServerStream
+from quantumfetcher.dataclasses.stream_audio import AudioStream
+from quantumfetcher.dataclasses.stream_text import TextStream
+from quantumfetcher.dataclasses.stream_video import VideoStream
 from quantumfetcher.enumerators.type_stream import StreamType
 from quantumfetcher.manifests.base import BaseManifest
 
@@ -93,7 +96,46 @@ class ServerManifest(BaseManifest):
         return self.__get_stream(type, closest_match, trackName=name)
 
     def save(self, path, streams):
-        pass
+        root = ET.Element("smil", xmlns=SMIL_NS["smil"])
+
+        # Add headers
+        head = ET.SubElement(root, "head")
+        for name, content in self.__headers.items():
+            ET.SubElement(head, "meta", name=name, content=content)
+
+        # Prepare body and switch
+        body = ET.SubElement(root, "body")
+        switch = ET.SubElement(body, "switch")
+
+        def resolve_stream(stream):
+            if isinstance(stream, VideoStream):
+                return self.get_video_stream(stream.bitrate)
+            if isinstance(stream, AudioStream):
+                return self.get_named_stream(
+                    stream.name, StreamType.Audio, stream.bitrate
+                )
+            if isinstance(stream, TextStream):
+                return self.get_named_stream(
+                    stream.name, StreamType.Text, stream.bitrate
+                )
+
+            raise ValueError(f"Unsupported stream type: {type(stream)}")
+
+        # Filter and resolve streams
+        new_streams = [s for s in (resolve_stream(stream) for stream in streams) if s]
+
+        for stream in new_streams:
+            tag = stream.type.value if stream.type != StreamType.Text else "textstream"
+            element = ET.SubElement(switch, tag, attrib=stream.attributes)
+
+            for name, value in stream.parameters.items():
+                ET.SubElement(
+                    element, "param", name=name, value=value, valuetype="data"
+                )
+
+        tree = ET.ElementTree(root)
+        ET.indent(tree, space="  ", level=0)
+        tree.write(path, encoding="utf-8", xml_declaration=True)
 
     def get_client_manifest_path(self) -> str | None:
         return self.__headers.get("clientManifestRelativePath")
