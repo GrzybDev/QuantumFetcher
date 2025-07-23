@@ -139,3 +139,6 @@ class ClientManifest(BaseManifest):
             return int(stream.attributes.get("Chunks"))  # type: ignore
         else:
             return -1
+
+    def save(self, path, streams) -> None:
+        pass
