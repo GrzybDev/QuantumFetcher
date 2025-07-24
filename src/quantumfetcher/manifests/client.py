@@ -141,4 +141,64 @@ class ClientManifest(BaseManifest):
             return -1
 
     def save(self, path, streams) -> None:
-        pass
+        root = ET.Element("SmoothStreamingMedia", attrib=self.__headers)
+
+        video_bitrates = {s.bitrate for s in streams if isinstance(s, VideoStream)}
+        named_streams = {
+            (
+                StreamType.Audio if isinstance(s, AudioStream) else StreamType.Text,
+                s.name,
+                s.language.value,
+            )
+            for s in streams
+            if not isinstance(s, VideoStream)
+        }
+
+        def add_video_stream(stream):
+            stream_index = ET.SubElement(root, "StreamIndex", attrib=stream.attributes)
+            max_width = max_height = ql_idx = 0
+            for ql in stream.qualityLevels:
+                if int(ql.get("Bitrate", -1)) in video_bitrates:
+                    max_width = max(max_width, int(ql.get("MaxWidth", 0)))
+                    max_height = max(max_height, int(ql.get("MaxHeight", 0)))
+                    ql["Index"] = str(ql_idx)
+                    ql_idx += 1
+                    quality_level = ET.SubElement(
+                        stream_index, "QualityLevel", attrib=ql
+                    )
+                    quality_level.set("Bitrate", str(ql.get("Bitrate", -1)))
+            for idx, chunk in enumerate(stream.chunks):
+                ET.SubElement(stream_index, "c", n=str(idx), d=str(chunk))
+            stream_index.attrib.update(
+                {
+                    "QualityLevels": str(ql_idx),
+                    "MaxWidth": str(max_width),
+                    "MaxHeight": str(max_height),
+                    "DisplayWidth": str(max_width),
+                    "DisplayHeight": str(max_height),
+                }
+            )
+
+        def add_named_stream(stream):
+            key = (
+                stream.type,
+                stream.attributes.get("Name"),
+                stream.attributes.get("Language"),
+            )
+            if key not in named_streams:
+                return
+            stream_index = ET.SubElement(root, "StreamIndex", attrib=stream.attributes)
+            for ql in stream.qualityLevels:
+                ET.SubElement(stream_index, "QualityLevel", attrib=ql)
+            for idx, chunk in enumerate(stream.chunks):
+                ET.SubElement(stream_index, "c", n=str(idx), d=str(chunk))
+
+        for stream in self.__streams:
+            if stream.type == StreamType.Video:
+                add_video_stream(stream)
+            elif stream.type in (StreamType.Audio, StreamType.Text):
+                add_named_stream(stream)
+
+        tree = ET.ElementTree(root)
+        ET.indent(tree, space="  ", level=0)
+        tree.write(path, xml_declaration=True, encoding="UTF-8")
