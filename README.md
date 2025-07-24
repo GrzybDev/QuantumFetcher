@@ -93,7 +93,7 @@ You can view available formats (bitrates, languages etc.) by running Quantum Fet
 
 This tool also can patch original `videoList.rmdj` file to make game point to [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server.
 
-To patch `videoList.rmdj` run this tool with `--patch-videolist` flag, by default, it will update videoList.rmdj to point to `127.0.0.1:10000`, which is the default for [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git).
+To patch `videoList.rmdj` run this tool with `--patch-videolist` flag, by default, it will update videoList.rmdj to point to `127.0.0.1:10000`.
 
 You can change the default to any other host that is compatible with [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git), to do that just set `--patch-videolist-server`.
 
