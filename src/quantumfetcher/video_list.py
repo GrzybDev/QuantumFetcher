@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import unquote, urlparse, urlunparse
 
 import typer
 
@@ -107,7 +107,7 @@ class VideoList:
 
     def get_server_manifest_name(self, episode_id: str) -> str:
         server_manifest_url = self.get_server_manifest_url(episode_id)
-        return server_manifest_url.split("/")[-1]
+        return unquote(server_manifest_url.split("/")[-1])
 
     def get_client_manifest_name(self, episode_id: str) -> str:
         client_manifest_url = self.__videoList.get(episode_id)
