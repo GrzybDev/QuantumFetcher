@@ -1,0 +1,124 @@
+name: Release Build
+
+on:
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      version_type:
+        type: choice
+        description: 'Version Type'
+        required: true
+        default: rebuild
+        options:
+          - rebuild
+          - patch
+          - minor
+          - major
+      publish_release:
+        description: "Publish Release"
+        type: boolean
+        required: true
+        default: true
+
+jobs:
+    bump_version:
+        name: Bump Version
+        runs-on: ubuntu-latest
+        permissions: write-all
+        outputs:
+          current_version: ${{ steps.get_version.outputs.current_version }}
+          new_version: ${{ steps.bump.outputs.current-version || steps.bump_manual.outputs.current-version }}
+        steps:
+            - uses: actions/checkout@v4
+            - uses: fregante/setup-git-user@v2
+
+            - name: Get current version
+              id: get_version
+              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type == 'rebuild' }}
+              run: |
+                pip install bump-my-version
+                echo "current_version=$(bump-my-version show current_version)" >> $GITHUB_OUTPUT
+
+            - name: Bump version
+              id: bump
+              uses: callowayproject/bump-my-version@master
+              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
+              with:
+                args: ${{ inputs.version_type }}
+
+            - name: Bump version (Manual)
+              id: bump_manual
+              uses: callowayproject/bump-my-version@master
+              if: ${{ github.event_name == 'release' }}
+              with:
+                args: --new-version ${{ github.ref_name }}
+
+    build:
+        name: Build for ${{ matrix.osname }}
+        permissions: write-all
+        runs-on: ${{ matrix.os }}
+        needs: bump_version
+
+        strategy:
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      osname: Linux
+                    - os: windows-latest
+                      osname: Windows
+
+        steps:
+            - uses: actions/checkout@v4
+              if: ${{ github.event_name == 'release' || github.event.inputs.version_type == 'rebuild' }}
+
+            - uses: actions/checkout@v4
+              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
+              with:
+                ref: v${{ needs.bump_version.outputs.new_version }}
+
+            - name: Setup Python
+              uses: actions/setup-python@v2
+              with:
+                python-version: 3.14
+
+            - name: Install dependencies
+              run: |
+                pip install poetry
+                poetry install
+
+            - name: Build package
+              run: poetry build
+
+            - name: Install PyInstaller
+              run: poetry run pip install pyinstaller
+            
+            - name: Build executable
+              run: poetry run pyinstaller --copy-metadata readchar -F --name QuantumFetcher_${{ matrix.osname }} ./src/quantumfetcher/__init__.py
+            
+            - name: Upload artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: Release_${{ matrix.osname }}
+                path: dist
+
+            - name: Upload Release (manual)
+              if: ${{ github.event_name == 'release' }}
+              uses: softprops/action-gh-release@v2
+              with:
+                files: ./dist/QuantumFetcher*
+            
+            - name: Upload Release
+              if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true' && github.event.inputs.version_type != 'rebuild') || github.event_name == 'release' }}
+              uses: softprops/action-gh-release@v2
+              with:
+                files: ./dist/QuantumFetcher*
+                tag_name: v${{ needs.bump_version.outputs.new_version }}
+
+            - name: Upload Re-Release
+              if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true' && github.event.inputs.version_type == 'rebuild') && github.event_name != 'release' }}
+              uses: softprops/action-gh-release@v2
+              with:
+                files: ./dist/QuantumFetcher*
+                tag_name: v${{ needs.bump_version.outputs.current_version }}

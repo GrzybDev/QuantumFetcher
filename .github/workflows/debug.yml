@@ -1,13 +1,9 @@
-name: Build
+name: Debug Build
 
 on:
   push:
     branches:
       - main
-  release:
-    types: [published]
-
-  workflow_dispatch:
 
 jobs:
   build:
@@ -29,17 +25,20 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.13
-      
+          python-version: 3.14
+
       - name: Install dependencies
         run: |
           pip install poetry
           poetry install
-      
+
+      - name: Build package
+        run: poetry build
+
       - name: Install PyInstaller
         run: poetry run pip install pyinstaller
      
-      - name: Build
+      - name: Build executable
         run: poetry run pyinstaller --copy-metadata readchar -F --name QuantumFetcher_${{ matrix.osname }} ./src/quantumfetcher/__init__.py
     
       - name: Upload artifact
@@ -47,9 +46,3 @@ jobs:
         with:
           name: Release_${{ matrix.osname }}
           path: dist
-
-      - name: Upload Release
-        if: ${{ github.event_name == 'release' }}
-        uses: softprops/action-gh-release@v2
-        with:
-            files: ./dist/QuantumFetcher*
