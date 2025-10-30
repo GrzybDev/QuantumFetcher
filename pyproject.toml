@@ -1,6 +1,6 @@
 [project]
 name = "quantumfetcher"
-version = "1.0.1"
+version = "1.0.2"
 description = ""
 authors = [
     {name = "Marek Grzyb",email = "marek@grzyb.dev"}
