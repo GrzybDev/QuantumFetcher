@@ -10,7 +10,8 @@ requires-python = ">=3.10"
 dependencies = [
     "typer (>=0.20.0,<0.21.0)",
     "requests (>=2.32.5,<3.0.0)",
-    "inquirer (>=3.4.1,<4.0.0)"
+    "inquirer (>=3.4.1,<4.0.0)",
+    "humanreadable (>=0.4.1,<0.5.0)"
 ]
 
 [tool.poetry]
