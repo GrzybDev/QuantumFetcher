@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from urllib.parse import unquote, urlparse, urlunparse
 
-import typer
+from rich import print
 
 from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
 
@@ -42,7 +42,7 @@ class VideoList:
 
     def dump(self, dump_path: Path | None = None):
         if dump_path is None:
-            typer.echo(json.dumps(self.__videoList, indent=4))
+            print(json.dumps(self.__videoList, indent=4))
             return
 
         # Dump the videoList to the specified path
