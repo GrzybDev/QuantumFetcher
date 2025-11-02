@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import humanreadable as hr
+from rich.console import Console
 from rich.progress import Progress
+from rich.table import Table
 
 from quantumfetcher.downloader import Downloader
 from quantumfetcher.enumerators.type_manifest import ManifestType
@@ -234,19 +237,58 @@ class Flow:
             text_streams, key_func=lambda x: (x.language.name, -x.bitrate)
         )
 
-        print(
-            "Available video formats:\n"
-            + "\n".join([f"- {v}" for v in qualities[StreamType.Video]]),
-        )
-        print(
-            "Available audio languages:\n"
-            + "\n".join(
-                [f"- {a} [{a.language.value}]" for a in qualities[StreamType.Audio]]
-            ),  # type: ignore
-        )
-        print(
-            "Available text formats:\n"
-            + "\n".join(
-                [f"- {t} [{t.language.value}]" for t in qualities[StreamType.Text]]
-            ),  # type: ignore
-        )
+        console = Console()
+
+        video_table = Table(title="Video Streams")
+        video_table.add_column("Resolution")
+        video_table.add_column("Bitrate")
+        video_table.add_column("Codec")
+
+        for v in qualities[StreamType.Video]:
+            video_table.add_row(
+                f"{v.height}p ({v.width}x{v.height})",
+                hr.BitsPerSecond(
+                    str(v.bitrate), default_unit=hr.BitsPerSecond.Unit.BPS
+                ).to_humanreadable(style="short"),
+                v.codec,
+            )
+
+        audio_table = Table(title="Audio Streams")
+        audio_table.add_column("Language")
+        audio_table.add_column("Language Code")
+        audio_table.add_column("Bitrate")
+        audio_table.add_column("Sampling Rate")
+        audio_table.add_column("Bits Per Sample")
+        audio_table.add_column("Channels")
+        audio_table.add_column("Codec")
+
+        for a in qualities[StreamType.Audio]:
+            audio_table.add_row(
+                a.language.name,
+                a.language.value,
+                hr.BitsPerSecond(
+                    str(a.bitrate), default_unit=hr.BitsPerSecond.Unit.BPS
+                ).to_humanreadable(style="short"),
+                f"{a.samplingRate} Hz",
+                f"{a.bitsPerSample}-bit",
+                f"{a.channels} channels",
+                a.codec,
+            )
+
+        text_table = Table(title="Text Streams")
+        text_table.add_column("Language")
+        text_table.add_column("Language Code")
+        text_table.add_column("Name")
+        text_table.add_column("Codec")
+
+        for t in qualities[StreamType.Text]:
+            text_table.add_row(
+                t.language.name,
+                t.language.value,
+                t.name,
+                t.codec,
+            )
+
+        console.print(video_table)
+        console.print(audio_table)
+        console.print(text_table)
