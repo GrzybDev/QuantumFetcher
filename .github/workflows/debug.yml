@@ -32,11 +32,17 @@ jobs:
       - name: Install dependencies
         run: pip install .
 
+      - id: repo_name
+        name: Get repository name
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ github.event.repository.name }}
+
       - name: Build executable
         uses: Nuitka/Nuitka-Action@main
         with:
           mode: standalone
-          script-name: src/quantumfetcher
+          script-name: src/${{ steps.repo_name.outputs.lowercase }}
           output-dir: build
           output-file: ${{ github.event.repository.name }}_${{ matrix.osname }}_Debug
           company-name: ${{ github.repository_owner }}
@@ -50,5 +56,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Debug_${{ matrix.osname }}
-          path: build/__init__.dist
+          path: build/${{ steps.repo_name.outputs.lowercase }}.dist
           include-hidden-files: true

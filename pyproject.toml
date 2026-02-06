@@ -1,11 +1,15 @@
 [project]
 name = "quantumfetcher"
 version = "1.0.2"
-description = ""
+description = "Tool for fetching Quantum Break live action episodes for offline in-game playback"
 authors = [
     {name = "Marek Grzyb",email = "marek@grzyb.dev"}
 ]
 readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = [
+    "LICENSE.md",
+]
 requires-python = ">=3.10"
 dependencies = [
     "typer (>=0.20.0,<0.21.0)",
@@ -14,9 +18,8 @@ dependencies = [
     "humanreadable (>=0.4.1,<0.5.0)"
 ]
 
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
+[tool.uv]
+package = true
 
 [project.scripts]
 quantumfetcher = "quantumfetcher:app"

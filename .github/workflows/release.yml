@@ -120,11 +120,17 @@ jobs:
             - name: Install dependencies
               run: pip install .
 
+            - id: repo_name
+              name: Get repository name
+              uses: ASzc/change-string-case-action@v6
+              with:
+                string: ${{ github.event.repository.name }}
+
             - name: Build executable
               uses: Nuitka/Nuitka-Action@main
               with:
                 mode: onefile
-                script-name: src/quantumfetcher
+                script-name: src/${{ steps.repo_name.outputs.lowercase }}
                 output-dir: build
                 output-file: ${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}
                 company-name: ${{ github.repository_owner }}
