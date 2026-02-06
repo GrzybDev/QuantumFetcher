@@ -135,6 +135,7 @@ jobs:
                 output-file: ${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}
                 company-name: ${{ github.repository_owner }}
                 product-name: ${{ github.event.repository.name }}
+                file-description: ${{ github.event.repository.name }} for ${{ matrix.osname }} (version ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }})
                 file-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
                 product-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
                 copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"

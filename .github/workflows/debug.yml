@@ -47,6 +47,7 @@ jobs:
           output-file: ${{ github.event.repository.name }}_${{ matrix.osname }}_Debug
           company-name: ${{ github.repository_owner }}
           product-name: ${{ github.event.repository.name }} (${{ github.workflow }} - ${{ github.sha }})
+          file-description: ${{ github.workflow }} of ${{ github.event.repository.name }} for ${{ matrix.osname }} (commit ${{ github.sha }})
           file-version: 0.0.0.0
           product-version: 0.0.0.0
           copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"
