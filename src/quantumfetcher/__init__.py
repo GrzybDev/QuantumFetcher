@@ -177,7 +177,3 @@ def main(
         show_formats=show_formats,
         extract_subtitles=extract_subtitles,
     )
-
-
-if __name__ == "__main__":
-    app()
