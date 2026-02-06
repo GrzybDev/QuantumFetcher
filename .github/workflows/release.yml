@@ -16,11 +16,6 @@ on:
           - patch
           - minor
           - major
-      publish_release:
-        description: "Publish Release"
-        type: boolean
-        required: true
-        default: true
 
 jobs:
     bump_version:
@@ -32,7 +27,6 @@ jobs:
           new_version: ${{ steps.bump.outputs.current-version || steps.bump_manual.outputs.current-version }}
         steps:
             - uses: actions/checkout@v4
-            - uses: fregante/setup-git-user@v2
 
             - name: Get current version
               id: get_version
@@ -55,6 +49,41 @@ jobs:
               with:
                 args: --new-version ${{ github.ref_name }}
 
+            - name: Install uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                activate-environment: true
+
+            - name: Update lockfile
+              run: uv lock
+
+            - name: Commit version bump
+              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' && steps.bump.outputs.bumped == 'true' }}
+              uses: EndBug/add-and-commit@v9
+              with:
+                default_author: github_actions
+                message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
+                push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
+                tag: "v${{ steps.bump.outputs.current-version }}"
+                tag_push: "--force"
+
+            - name: Commit version bump (Manual)
+              if: ${{ github.event_name == 'release' && steps.bump.outputs.bumped == 'true' }}
+              uses: EndBug/add-and-commit@v9
+              with:
+                default_author: github_actions
+                message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
+                push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
+                tag: "v${{ steps.bump.outputs.current-version }}"
+                tag_push: "--force"
+
+            - uses: ad-m/github-push-action@master
+              name: Push changes
+              if: ${{ steps.bump.outputs.bumped == 'true' }}
+              with:
+                force: true
+                tags: true
+
     build:
         name: Build for ${{ matrix.osname }}
         permissions: write-all
@@ -66,8 +95,13 @@ jobs:
                 include:
                     - os: ubuntu-latest
                       osname: Linux
+                      osext: ""
+                    - os: macos-latest
+                      osname: macOS
+                      osext: ""
                     - os: windows-latest
                       osname: Windows
+                      osext: ".exe"
 
         steps:
             - uses: actions/checkout@v4
@@ -81,44 +115,45 @@ jobs:
             - name: Setup Python
               uses: actions/setup-python@v2
               with:
-                python-version: 3.14
+                python-version: 3.13
 
             - name: Install dependencies
-              run: |
-                pip install poetry
-                poetry install
+              run: pip install .
 
-            - name: Build package
-              run: poetry build
-
-            - name: Install PyInstaller
-              run: poetry run pip install pyinstaller
-            
             - name: Build executable
-              run: poetry run pyinstaller --copy-metadata readchar -F --name QuantumFetcher_${{ matrix.osname }} ./src/quantumfetcher/__init__.py
-            
-            - name: Upload artifact
-              uses: actions/upload-artifact@v4
+              uses: Nuitka/Nuitka-Action@main
               with:
-                name: Release_${{ matrix.osname }}
-                path: dist
+                mode: onefile
+                script-name: src/quantumfetcher
+                output-dir: build
+                output-file: ${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}
+                company-name: ${{ github.repository_owner }}
+                product-name: ${{ github.event.repository.name }}
+                file-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
+                product-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
+                copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"
+                include-package: rich._unicode_data
 
-            - name: Upload Release (manual)
-              if: ${{ github.event_name == 'release' }}
+            - name: Upload release (manual)
+              if: ${{ github.event_name == 'release' && matrix.os != 'windows-latest' }}
               uses: softprops/action-gh-release@v2
               with:
-                files: ./dist/QuantumFetcher*
-            
-            - name: Upload Release
-              if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true' && github.event.inputs.version_type != 'rebuild') || github.event_name == 'release' }}
-              uses: softprops/action-gh-release@v2
-              with:
-                files: ./dist/QuantumFetcher*
-                tag_name: v${{ needs.bump_version.outputs.new_version }}
+                files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
 
-            - name: Upload Re-Release
-              if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.publish_release == 'true' && github.event.inputs.version_type == 'rebuild') && github.event_name != 'release' }}
+            - name: Upload release
+              if: ${{ github.event_name == 'workflow_dispatch' && matrix.os != 'windows-latest' }}
               uses: softprops/action-gh-release@v2
               with:
-                files: ./dist/QuantumFetcher*
-                tag_name: v${{ needs.bump_version.outputs.current_version }}
+                files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+                tag_name: v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
+
+            - name: Upload windows release for code signing
+              if: ${{ matrix.os == 'windows-latest' }}
+              uses: wearesection/sftp-action@1.0.1
+              with:
+                host: ${{ secrets.SFTP_HOST }}
+                port: ${{ secrets.SFTP_PORT }}
+                username: runner
+                privateKey: ${{ secrets.SFTP_PRIVATE_KEY }}
+                localPath: ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+                remotePath: /artifacts/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}

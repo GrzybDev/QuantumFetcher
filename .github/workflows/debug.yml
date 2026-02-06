@@ -12,6 +12,8 @@ jobs:
         include:
           - os: ubuntu-latest
             osname: Linux
+          - os: macos-latest
+            osname: macOS
           - os: windows-latest
             osname: Windows
 
@@ -25,24 +27,28 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.14
+          python-version: 3.13
 
       - name: Install dependencies
-        run: |
-          pip install poetry
-          poetry install
+        run: pip install .
 
-      - name: Build package
-        run: poetry build
-
-      - name: Install PyInstaller
-        run: poetry run pip install pyinstaller
-     
       - name: Build executable
-        run: poetry run pyinstaller --copy-metadata readchar -F --name QuantumFetcher_${{ matrix.osname }} ./src/quantumfetcher/__init__.py
-    
+        uses: Nuitka/Nuitka-Action@main
+        with:
+          mode: standalone
+          script-name: src/quantumfetcher
+          output-dir: build
+          output-file: ${{ github.event.repository.name }}_${{ matrix.osname }}_Debug
+          company-name: ${{ github.repository_owner }}
+          product-name: ${{ github.event.repository.name }} (${{ github.workflow }} - ${{ github.sha }})
+          file-version: 0.0.0.0
+          product-version: 0.0.0.0
+          copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"
+          include-package: rich._unicode_data
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Release_${{ matrix.osname }}
-          path: dist
+          name: Debug_${{ matrix.osname }}
+          path: build/__init__.dist
+          include-hidden-files: true
