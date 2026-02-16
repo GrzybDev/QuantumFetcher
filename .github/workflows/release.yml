@@ -156,11 +156,9 @@ jobs:
 
             - name: Upload windows release for code signing
               if: ${{ matrix.os == 'windows-latest' }}
-              uses: wearesection/sftp-action@1.0.1
-              with:
-                host: ${{ secrets.SFTP_HOST }}
-                port: ${{ secrets.SFTP_PORT }}
-                username: runner
-                privateKey: ${{ secrets.SFTP_PRIVATE_KEY }}
-                localPath: ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
-                remotePath: /artifacts/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+              env:
+                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+                AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+                AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+              run: aws s3 cp ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }} s3://builds/unsigned/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
