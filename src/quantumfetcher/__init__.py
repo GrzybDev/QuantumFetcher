@@ -129,6 +129,7 @@ def main(
 ):
     if (
         path is None
+        and videolist_path == Path("data/videoList.rmdj")
         and not dump_videolist_path
         and not patch_videolist
         and not build_videolist_path

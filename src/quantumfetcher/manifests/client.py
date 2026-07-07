@@ -1,4 +1,5 @@
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from quantumfetcher.dataclasses.stream import ClientStream
 from quantumfetcher.dataclasses.stream_audio import AudioStream
@@ -139,6 +140,51 @@ class ClientManifest(BaseManifest):
             return int(stream.attributes.get("Chunks"))  # type: ignore
         else:
             return -1
+
+    def get_fragment_paths(self, stream_to_fetch) -> list[Path]:
+        if isinstance(stream_to_fetch, VideoStream):
+            stream_type = StreamType.Video
+            track_name = None
+        elif isinstance(stream_to_fetch, AudioStream):
+            stream_type = StreamType.Audio
+            track_name = stream_to_fetch.name
+        elif isinstance(stream_to_fetch, TextStream):
+            stream_type = StreamType.Text
+            track_name = stream_to_fetch.name
+        else:
+            raise TypeError(f"Unsupported stream type: {type(stream_to_fetch)}")
+
+        stream_index = None
+        for stream in self.__streams:
+            expected_type = stream_type.value if stream_type != StreamType.Text else "text"
+            if stream.attributes.get("Type") != expected_type:
+                continue
+
+            if track_name and stream.attributes.get("Name") != track_name:
+                continue
+
+            stream_index = stream
+            break
+
+        if stream_index is None:
+            return []
+
+        url_template = stream_index.attributes.get("Url")
+        if not url_template:
+            return []
+
+        fragment_paths = []
+        start_time = 0
+
+        for chunk_duration in stream_index.chunks:
+            relative_path = (
+                url_template.replace("{bitrate}", str(stream_to_fetch.bitrate))
+                .replace("{start time}", str(start_time))
+            )
+            fragment_paths.append(Path(relative_path))
+            start_time += chunk_duration
+
+        return fragment_paths
 
     def save(self, path, streams) -> None:
         root = ET.Element("SmoothStreamingMedia", attrib=self.__headers)

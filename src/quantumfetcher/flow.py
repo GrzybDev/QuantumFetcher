@@ -3,6 +3,7 @@ from pathlib import Path
 import humanreadable as hr
 from rich.console import Console
 from rich.progress import Progress
+from requests.exceptions import RequestException
 from rich.table import Table
 
 from quantumfetcher.downloader import Downloader
@@ -93,6 +94,15 @@ class Flow:
                 episodes.items(),
                 description="Fetching manifests...",
             ):
+                if (
+                    episode_id == "J1 - 4K Test"
+                    and self.__episodes_to_fetch != ["J1 - 4K Test"]
+                ):
+                    progress.console.log(
+                        "[yellow]Warning:[/yellow] Skipping dead test episode entry: J1 - 4K Test."
+                    )
+                    continue
+
                 server_manifest_url = self.__video_list.get_server_manifest_url(
                     episode_id
                 )
@@ -110,15 +120,25 @@ class Flow:
                     f"Fetching server manifest for episode {episode_id}..."
                 )
 
-                server_manifest = self.__downloader.fetch_manifest(
-                    manifest_type=ManifestType.Server,
-                    manifest_url=server_manifest_url,
-                )
+                try:
+                    server_manifest = self.__downloader.fetch_manifest(
+                        manifest_type=ManifestType.Server,
+                        manifest_url=server_manifest_url,
+                    )
+                except RequestException as exc:
+                    progress.console.log(
+                        f"[yellow]Warning:[/yellow] Server manifest for episode {episode_id} could not be fetched ({exc}). "
+                        "Will use client-manifest fragment download mode."
+                    )
+                    server_manifest = None
 
-                self.__manifests[episode_id] = {
+                episode_manifests = {
                     ManifestType.Client: client_manifest,
-                    ManifestType.Server: server_manifest,
                 }
+                if server_manifest is not None:
+                    episode_manifests[ManifestType.Server] = server_manifest
+
+                self.__manifests[episode_id] = episode_manifests
 
     def __prepare_streams(self):
         qualities = get_streams(self.__manifests)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
-from requests.exceptions import ChunkedEncodingError
+from requests.exceptions import ChunkedEncodingError, RequestException
 from rich.console import Group
 from rich.live import Live
 from rich.progress import (
@@ -67,6 +67,7 @@ class Downloader:
     )
 
     __progress_group = Group(__progress_overall, __progress_stream, __progress_media)
+    __request_timeout = 30
 
     def __init__(self):
         self.__session = requests.Session()
@@ -74,13 +75,15 @@ class Downloader:
 
         retries = Retry(total=10, backoff_factor=3)
 
-        self.__session.mount("http://", HTTPAdapter(max_retries=retries))
+        adapter = HTTPAdapter(max_retries=retries)
+        self.__session.mount("http://", adapter)
+        self.__session.mount("https://", adapter)
 
     def __fetch_file(self, url: str) -> str:
         headers = self.__session.headers.copy()  # type: ignore
         headers["Accept-Encoding"] = "deflate"
 
-        r = requests.get(url, headers=headers)
+        r = self.__session.get(url, headers=headers, timeout=self.__request_timeout)
         r.raise_for_status()
 
         return r.content.decode()
@@ -126,7 +129,7 @@ class Downloader:
 
     def __get_episode_manifests(
         self, episode_id
-    ) -> tuple[ClientManifest, ServerManifest]:
+    ) -> tuple[ClientManifest, ServerManifest | None]:
         episode_manifests = self.__manifests[episode_id]
         client_manifest = episode_manifests[ManifestType.Client]
 
@@ -135,7 +138,10 @@ class Downloader:
                 f"Expected ClientManifest for episode {episode_id}, got {type(client_manifest)}"
             )
 
-        server_manifest = episode_manifests[ManifestType.Server]
+        server_manifest = episode_manifests.get(ManifestType.Server)
+        if server_manifest is None:
+            return client_manifest, None
+
         if not isinstance(server_manifest, ServerManifest):
             raise TypeError(
                 f"Expected ServerManifest for episode {episode_id}, got {type(server_manifest)}"
@@ -154,6 +160,16 @@ class Downloader:
             streams_to_download.extend(streams)
 
         client_manifest, server_manifest = self.__get_episode_manifests(episode_id)
+
+        if server_manifest is None:
+            self.__download_episode_fragments(
+                episode_id,
+                episode_path,
+                streams_to_download,
+                client_manifest,
+            )
+            return
+
         client_manifest_path = server_manifest.get_client_manifest_path()
 
         if client_manifest_path is None:
@@ -269,6 +285,9 @@ class Downloader:
     def __download_stream(self, episode_id, episode_path, stream, stream_type, chunks):
         _, server_manifest = self.__get_episode_manifests(episode_id)
 
+        if server_manifest is None:
+            return
+
         if stream_type == StreamType.Video:
             stream = server_manifest.get_video_stream(stream.bitrate)
         else:
@@ -315,7 +334,7 @@ class Downloader:
             f"Downloading {outputPath.name}..."
         )
 
-        with requests.head(mediaUrl) as r:
+        with self.__session.head(mediaUrl, timeout=self.__request_timeout) as r:
             r.raise_for_status()
             contentLength = int(r.headers["Content-Length"])
 
@@ -342,7 +361,10 @@ class Downloader:
 
                 try:
                     with self.__session.get(
-                        mediaUrl, headers=headers, stream=True
+                        mediaUrl,
+                        headers=headers,
+                        stream=True,
+                        timeout=self.__request_timeout,
                     ) as r:
                         r.raise_for_status()
 
@@ -360,3 +382,66 @@ class Downloader:
                     )
                     time.sleep(1)
                     continue
+
+    def __download_episode_fragments(
+        self,
+        episode_id: str,
+        episode_path: Path,
+        streams_to_download: list,
+        client_manifest: ClientManifest,
+    ):
+        client_manifest_path = episode_path / "manifest"
+        client_manifest.save(client_manifest_path, streams_to_download)
+
+        task_id = self.__progress_stream.add_task(
+            f"Downloading fragment files for {episode_id}...",
+            total=len(streams_to_download),
+        )
+
+        for stream in streams_to_download:
+            fragment_paths = client_manifest.get_fragment_paths(stream)
+
+            for fragment_path in fragment_paths:
+                media_url = self.__video_list.get_fragment_url(
+                    episode_id, fragment_path.as_posix()
+                )
+                self.__download_fragment(media_url, episode_path / fragment_path)
+
+            self.__progress_stream.update(task_id, advance=1)
+
+        self.__progress_stream.remove_task(task_id)
+
+    def __download_fragment(self, media_url: str, output_path: Path):
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return
+
+        output_path.parent.mkdir(exist_ok=True, parents=True)
+
+        progress_media = self.__progress_media.add_task(
+            f"Downloading {output_path.name}..."
+        )
+
+        try:
+            with self.__session.get(
+                media_url,
+                stream=True,
+                timeout=self.__request_timeout,
+            ) as r:
+                r.raise_for_status()
+                content_length = int(r.headers.get("Content-Length", "0"))
+                if content_length:
+                    self.__progress_media.update(progress_media, total=content_length)
+
+                with open(output_path, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=1024 * 64):
+                        if not chunk:
+                            continue
+
+                        f.write(chunk)
+                        self.__progress_media.update(progress_media, advance=len(chunk))
+        except RequestException:
+            if output_path.exists():
+                output_path.unlink()
+            raise
+        finally:
+            self.__progress_media.remove_task(progress_media)
