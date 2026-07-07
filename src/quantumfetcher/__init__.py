@@ -116,6 +116,14 @@ def main(
             help="Comma-seperated list of text bitrates to download",
         ),
     ] = None,
+    fragment_workers: Annotated[
+        int,
+        typer.Option(
+            help="Concurrent fragment download workers (1-16)",
+            min=1,
+            max=16,
+        ),
+    ] = 8,
     show_formats: Annotated[
         bool,
         typer.Option(
@@ -175,6 +183,7 @@ def main(
         audio_bitrates=audio_bitrates.split(",") if audio_bitrates else None,
         text_langs=text_languages.split(",") if text_languages else None,
         text_bitrates=text_bitrates.split(",") if text_bitrates else None,
+        fragment_workers=fragment_workers,
         show_formats=show_formats,
         extract_subtitles=extract_subtitles,
     )

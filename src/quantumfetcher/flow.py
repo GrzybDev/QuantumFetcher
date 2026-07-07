@@ -18,7 +18,7 @@ from quantumfetcher.video_list import VideoList
 class Flow:
 
     def __init__(self, interactive: bool, video_list: VideoList, **kwargs) -> None:
-        self.__downloader = Downloader()
+        self.__downloader = Downloader(fragment_workers=kwargs["fragment_workers"])
 
         self.__interactive = interactive
         self.__video_list = video_list
@@ -32,6 +32,7 @@ class Flow:
         self.__fetch_audio_bitrates: list[str] | None = kwargs["audio_bitrates"]
         self.__fetch_text_langs: list[str] | None = kwargs["text_langs"]
         self.__fetch_text_bitrates: list[str] | None = kwargs["text_bitrates"]
+        self.__fragment_workers: int = kwargs["fragment_workers"]
 
         show_formats = kwargs["show_formats"]
         extract_subtitles = kwargs["extract_subtitles"]

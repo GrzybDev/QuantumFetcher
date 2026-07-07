@@ -1,5 +1,7 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
 import time
+import threading
 from math import ceil
 from pathlib import Path
 
@@ -66,18 +68,43 @@ class Downloader:
         TimeRemainingColumn(),
     )
 
-    __progress_group = Group(__progress_overall, __progress_stream, __progress_media)
+    __progress_fragment = Progress(
+        SpinnerColumn(finished_text="\u2713"),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+    )
+
+    __progress_group = Group(
+        __progress_overall, __progress_stream, __progress_media, __progress_fragment
+    )
     __request_timeout = 30
 
-    def __init__(self):
-        self.__session = requests.Session()
-        self.__session.headers.update({"User-Agent": USER_AGENT})
+    def __init__(self, fragment_workers: int = 8):
+        self.__fragment_workers = max(1, min(fragment_workers, 16))
+        self.__thread_local = threading.local()
+        self.__session = self.__create_session()
+
+    def __create_session(self):
+        session = requests.Session()
+        session.headers.update({"User-Agent": USER_AGENT})
 
         retries = Retry(total=10, backoff_factor=3)
 
         adapter = HTTPAdapter(max_retries=retries)
-        self.__session.mount("http://", adapter)
-        self.__session.mount("https://", adapter)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        return session
+
+    def __get_fragment_session(self):
+        session = getattr(self.__thread_local, "session", None)
+        if session is None:
+            session = self.__create_session()
+            self.__thread_local.session = session
+        return session
 
     def __fetch_file(self, url: str) -> str:
         headers = self.__session.headers.copy()  # type: ignore
@@ -116,6 +143,7 @@ class Downloader:
         self.__streams_audio = audio_streams
         self.__streams_text = text_streams
         self.__extract_subtitles = extract_subtitles
+        self.__fragment_workers = max(1, min(self.__fragment_workers, 16))
 
         with Live(self.__progress_group, refresh_per_second=10):
             task_id = self.__progress_overall.add_task(
@@ -393,36 +421,70 @@ class Downloader:
         client_manifest_path = episode_path / "manifest"
         client_manifest.save(client_manifest_path, streams_to_download)
 
-        task_id = self.__progress_stream.add_task(
-            f"Downloading fragment files for {episode_id}...",
-            total=len(streams_to_download),
-        )
+        fragment_jobs = []
+        stream_fragment_counts = {}
 
-        for stream in streams_to_download:
+        for stream_index, stream in enumerate(streams_to_download):
             fragment_paths = client_manifest.get_fragment_paths(stream)
+            stream_fragment_counts[stream_index] = len(fragment_paths)
 
             for fragment_path in fragment_paths:
                 media_url = self.__video_list.get_fragment_url(
                     episode_id, fragment_path.as_posix()
                 )
-                self.__download_fragment(media_url, episode_path / fragment_path)
+                fragment_jobs.append(
+                    (stream_index, media_url, episode_path / fragment_path)
+                )
 
-            self.__progress_stream.update(task_id, advance=1)
+        task_id = self.__progress_stream.add_task(
+            f"Downloading fragment files for {episode_id}...",
+            total=len(streams_to_download),
+        )
 
-        self.__progress_stream.remove_task(task_id)
+        fragment_task = self.__progress_fragment.add_task(
+            f"Downloading fragments for {episode_id}...",
+            total=len(fragment_jobs),
+        )
+
+        try:
+            with ThreadPoolExecutor(max_workers=self.__fragment_workers) as executor:
+                futures = {
+                    executor.submit(self.__download_fragment, media_url, output_path): stream_index
+                    for stream_index, media_url, output_path in fragment_jobs
+                }
+
+                stream_remaining = dict(stream_fragment_counts)
+
+                for future in as_completed(futures):
+                    stream_index = futures[future]
+                    future.result()
+
+                    self.__progress_fragment.update(fragment_task, advance=1)
+
+                    stream_remaining[stream_index] -= 1
+                    if stream_remaining[stream_index] == 0:
+                        self.__progress_stream.update(task_id, advance=1)
+        finally:
+            self.__progress_fragment.remove_task(fragment_task)
+            self.__progress_stream.remove_task(task_id)
 
     def __download_fragment(self, media_url: str, output_path: Path):
         if output_path.exists() and output_path.stat().st_size > 0:
             return
 
         output_path.parent.mkdir(exist_ok=True, parents=True)
+        temp_path = output_path.with_name(output_path.name + ".part")
 
-        progress_media = self.__progress_media.add_task(
+        if temp_path.exists():
+            temp_path.unlink()
+
+        progress_media = self.__progress_fragment.add_task(
             f"Downloading {output_path.name}..."
         )
 
         try:
-            with self.__session.get(
+            session = self.__get_fragment_session()
+            with session.get(
                 media_url,
                 stream=True,
                 timeout=self.__request_timeout,
@@ -430,18 +492,20 @@ class Downloader:
                 r.raise_for_status()
                 content_length = int(r.headers.get("Content-Length", "0"))
                 if content_length:
-                    self.__progress_media.update(progress_media, total=content_length)
+                    self.__progress_fragment.update(progress_media, total=content_length)
 
-                with open(output_path, "wb") as f:
+                with open(temp_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=1024 * 64):
                         if not chunk:
                             continue
 
                         f.write(chunk)
-                        self.__progress_media.update(progress_media, advance=len(chunk))
+                        self.__progress_fragment.update(progress_media, advance=len(chunk))
+
+            temp_path.replace(output_path)
         except RequestException:
-            if output_path.exists():
-                output_path.unlink()
+            if temp_path.exists():
+                temp_path.unlink()
             raise
         finally:
-            self.__progress_media.remove_task(progress_media)
+            self.__progress_fragment.remove_task(progress_media)
