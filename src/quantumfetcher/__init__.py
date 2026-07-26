@@ -4,16 +4,20 @@ from typing import Annotated
 import typer
 
 from quantumfetcher.flow import Flow
+from quantumfetcher.helpers import get_game_dir, get_videolist_path
+from quantumfetcher.video_list import VideoList, videolist_app
 from quantumfetcher.prompt import Prompt
-from quantumfetcher.video_list import VideoList
 
-app = typer.Typer()
-
-
-@app.command(
+app = typer.Typer(
     help="Tool for fetching Quantum Break live action episodes for offline in-game playback"
 )
-def main(
+app.add_typer(
+    videolist_app, name="videolist", help="Manage the videoList.rmdj manifest file"
+)
+
+
+@app.command("download")
+def download(
     path: Annotated[
         Path | None,
         typer.Argument(
@@ -21,50 +25,14 @@ def main(
         ),
     ] = None,
     videolist_path: Annotated[
-        Path,
-        typer.Option(
-            help="Path to videoList.rmdj file",
-            file_okay=True,
-            dir_okay=False,
-            readable=True,
-        ),
-    ] = Path("data/videoList.rmdj"),
-    dump_videolist_path: Annotated[
         Path | None,
         typer.Option(
-            help="Dump videoList.rmdj to specified file or stdout if '-' is provided",
-            is_flag=True,
-        ),
-    ] = None,
-    patch_videolist: Annotated[
-        bool,
-        typer.Option(
-            help="Patch videoList.rmdj to point to custom QuantumStreamer compatible server",
-            is_flag=True,
-        ),
-    ] = False,
-    patch_videolist_server: Annotated[
-        str,
-        typer.Option(
-            help="Custom streaming server host",
-        ),
-    ] = "127.0.0.1:10000",
-    build_videolist_path: Annotated[
-        Path | None,
-        typer.Option(
-            help="Build videoList.rmdj from specified JSON file",
+            help="Path to videoList.rmdj file (defaults to data/videoList.rmdj inside game folder)",
             file_okay=True,
             dir_okay=False,
             readable=True,
         ),
     ] = None,
-    interactive: Annotated[
-        bool,
-        typer.Option(
-            help="Run in interactive mode",
-            is_flag=True,
-        ),
-    ] = False,
     episodes: Annotated[
         str | None,
         typer.Option(
@@ -74,16 +42,16 @@ def main(
     episodes_path: Annotated[
         Path | None,
         typer.Option(
-            help="Path to where episodes will be saved",
+            help="Path to where episodes will be saved (defaults to videos/episodes inside game folder)",
             dir_okay=True,
             writable=True,
             readable=True,
         ),
-    ] = Path("videos/episodes"),
+    ] = None,
     video_resolutions: Annotated[
         str | None,
         typer.Option(
-            help="Comma-seperated list of video resolutions to download (e.g., 720p, 1080p, 2160p)",
+            help="Comma-seperated list of video resolutions to download (e.g., 1080p, 720p)",
         ),
     ] = None,
     video_bitrates: Annotated[
@@ -119,49 +87,40 @@ def main(
     show_formats: Annotated[
         bool,
         typer.Option(
-            help="Show available formats for video/audio/text streams",
+            help="Show available formats for video/audio/text streams without downloading",
             is_flag=True,
         ),
     ] = False,
     extract_subtitles: Annotated[
-        bool, typer.Option(help="Extract subtitles to JSON file", is_flag=True)
+        bool, typer.Option(help="Extract subtitles", is_flag=True)
     ] = False,
 ):
-    if (
-        path is None
-        and not dump_videolist_path
-        and not patch_videolist
-        and not build_videolist_path
-    ):
-        # Ask user for path to root game folder
+    """Download episodes for local playback"""
+    interactive = False
+
+    if not path and not videolist_path:
         interactive = True
         path = Prompt.get_game_path()
 
-    is_game_dir = False
+    game_path = get_game_dir(path) if not videolist_path else Path()
+    vl_path = get_videolist_path(game_path, videolist_path)
 
-    if path and videolist_path == Path("data/videoList.rmdj"):
-        # If no videoList.rmdj is provided, use the default one
-        videolist_path = path / "data" / "videoList.rmdj"
-        is_game_dir = True
+    if not episodes_path:
+        episodes_path = game_path / "videos" / "episodes"
 
-    if path and episodes_path == Path("videos/episodes"):
-        # If no episodes path is provided, use the default one
-        episodes_path = path / "videos" / "episodes"
+    video_list = VideoList(vl_path, is_game_dir=bool(not videolist_path))
 
-    if build_videolist_path:
-        return VideoList.build(build_videolist_path, videolist_path)
+    if not episodes:
+        interactive = True
+        episodes_list = Prompt.select_episodes(video_list)
+        episodes = ",".join(episodes_list)
 
-    video_list = VideoList(videolist_path, is_game_dir)
-
-    if dump_videolist_path:
-        if dump_videolist_path == Path("-"):
-            # If dump_videolist_path is "-", print to stdout
-            dump_videolist_path = None
-
-        return video_list.dump(dump_videolist_path)
-
-    if patch_videolist:
-        return video_list.patch(patch_videolist_server)
+    if (
+        (not video_resolutions and not video_bitrates)
+        or (not audio_languages and not audio_bitrates)
+        or (not text_languages and not text_bitrates)
+    ):
+        interactive = True
 
     Flow(
         interactive=interactive,

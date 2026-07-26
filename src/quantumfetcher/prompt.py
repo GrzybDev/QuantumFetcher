@@ -3,12 +3,12 @@ from pathlib import Path
 import inquirer
 import typer
 
-from quantumfetcher.enumerators.type_stream import StreamType
+from quantumfetcher.enumerators.stream import StreamType
+from quantumfetcher.logger import logger
 from quantumfetcher.video_list import VideoList
 
 
 class Prompt:
-
     @staticmethod
     def get_game_path() -> Path:
         questions = [
@@ -31,8 +31,8 @@ class Prompt:
         questions = [
             inquirer.Checkbox(
                 "episodes",
-                message="Select episodes to fetch",
-                choices=video_list.episode_list.keys(),
+                message="Select episodes to fetch (ctrl+a to select all)",
+                choices=list(video_list.episode_list.keys()),
             )
         ]
         answers = inquirer.prompt(questions)
@@ -43,37 +43,32 @@ class Prompt:
         return answers["episodes"]
 
     @staticmethod
-    def select_streams(
-        qualities: dict[StreamType, list],
-        skip_video_prompt: bool,
-        skip_audio_prompt: bool,
-        skip_text_prompt: bool,
-    ):
+    def select_streams(qualities: dict[StreamType, list]) -> dict[StreamType, list]:
         questions = []
 
-        if not skip_video_prompt and StreamType.Video in qualities:
+        if StreamType.Video in qualities and qualities[StreamType.Video]:
             questions.append(
                 inquirer.Checkbox(
                     StreamType.Video,
-                    message="Select video streams to fetch",
+                    message="Select video resolutions (ctrl+a to select all)",
                     choices=qualities[StreamType.Video],
                 )
             )
 
-        if not skip_audio_prompt and StreamType.Audio in qualities:
+        if StreamType.Audio in qualities and qualities[StreamType.Audio]:
             questions.append(
                 inquirer.Checkbox(
                     StreamType.Audio,
-                    message="Select audio streams to fetch",
+                    message="Select audio languages (ctrl+a to select all)",
                     choices=qualities[StreamType.Audio],
                 )
             )
 
-        if not skip_text_prompt and StreamType.Text in qualities:
+        if StreamType.Text in qualities and qualities[StreamType.Text]:
             questions.append(
                 inquirer.Checkbox(
                     StreamType.Text,
-                    message="Select text streams to fetch",
+                    message="Select text languages (ctrl+a to select all)",
                     choices=qualities[StreamType.Text],
                 )
             )
@@ -82,7 +77,7 @@ class Prompt:
         questions = [q for q in questions if q.choices]
 
         if not questions:
-            typer.echo("No streams available for download.", err=True)
+            logger.error("No streams available for download.")
             raise typer.Exit()
 
         answers = inquirer.prompt(questions)
@@ -90,10 +85,11 @@ class Prompt:
         if answers is None:
             raise typer.Abort()
 
-        filtered_answers = {}
-        filtered_answers[StreamType.Video] = answers.get(StreamType.Video, [])
-        filtered_answers[StreamType.Audio] = answers.get(StreamType.Audio, [])
-        filtered_answers[StreamType.Text] = answers.get(StreamType.Text, [])
+        filtered_answers = {
+            StreamType.Video: answers.get(StreamType.Video, []),
+            StreamType.Audio: answers.get(StreamType.Audio, []),
+            StreamType.Text: answers.get(StreamType.Text, []),
+        }
 
         return filtered_answers
 
@@ -103,7 +99,7 @@ class Prompt:
             inquirer.Confirm(
                 "extract_subtitles",
                 message="Do you want to extract subtitles?",
-                default=True,
+                default=False,
             )
         ]
         answers = inquirer.prompt(questions)

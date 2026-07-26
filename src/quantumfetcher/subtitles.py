@@ -3,9 +3,8 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-import typer
-
 from quantumfetcher.constants import TTML_NS
+from quantumfetcher.logger import logger
 
 
 def __get_fragment_offsets(reader, path):
@@ -17,18 +16,16 @@ def __get_fragment_offsets(reader, path):
     mfraBlockSize = int.from_bytes(reader.read(4))
 
     if mfraBlockSize != mfroSize:
-        typer.echo(
-            f"Cannot extract subtitles! Invalid mfro block size in track file {path} (Expected: {mfroSize}, Got: {mfraBlockSize}).",
-            err=True,
+        logger.error(
+            f"Cannot extract subtitles! Invalid mfro block size in track file {path} (Expected: {mfroSize}, Got: {mfraBlockSize})."
         )
         return
 
     mfraMagic = reader.read(4)
 
     if mfraMagic != b"mfra":
-        typer.echo(
-            f"Cannot extract subtitles! Invalid mfra magic in track file {path} (Expected: mfra, Got: {mfraMagic}).",
-            err=True,
+        logger.error(
+            f"Cannot extract subtitles! Invalid mfra magic in track file {path} (Expected: mfra, Got: {mfraMagic})."
         )
         return
 
@@ -36,9 +33,8 @@ def __get_fragment_offsets(reader, path):
     tfraMagic = reader.read(4)
 
     if tfraMagic != b"tfra":
-        typer.echo(
-            f"Cannot extract subtitles! Invalid tfra magic in track file {path} (Expected: tfra, Got: {mfraMagic}).",
-            err=True,
+        logger.error(
+            f"Cannot extract subtitles! Invalid tfra magic in track file {path} (Expected: tfra, Got: {mfraMagic})."
         )
         return
 
@@ -50,12 +46,12 @@ def __get_fragment_offsets(reader, path):
     temp = int.from_bytes(reader.read(4))
     lenSizeOfTrafNum = ((temp & 0x3F) >> 4) + 1
     lenSizeOfTrunNum = ((temp & 0xC) >> 2) + 1
-    lenSizeOfSampleNum = ((temp & 0x3)) + 1
+    lenSizeOfSampleNum = (temp & 0x3) + 1
 
     numOfEntries = int.from_bytes(reader.read(4))
     fragments = []
 
-    for i in range(numOfEntries):
+    for _ in range(numOfEntries):
         _ = int.from_bytes(reader.read(readSize))
         offset = int.from_bytes(reader.read(readSize))
         _ = int.from_bytes(reader.read(lenSizeOfTrafNum))

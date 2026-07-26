@@ -1,14 +1,129 @@
 import json
 from pathlib import Path
+from typing import Annotated
 from urllib.parse import unquote, urlparse, urlunparse
 
-from rich import print
-
+import typer
+from quantumfetcher.logger import logger
 from quantumfetcher.constants import RMDJ_ENCRYPTION_KEY
+from quantumfetcher.helpers import get_game_dir, get_videolist_path
+
+videolist_app = typer.Typer(help="Manage the videoList.rmdj manifest file")
+
+
+@videolist_app.command("dump")
+def dump_videolist(
+    path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Path to root game folder", exists=True, dir_okay=True, readable=True
+        ),
+    ] = None,
+    videolist_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Path to videoList.rmdj file (defaults to data/videoList.rmdj inside game folder)",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            "--output",
+            "-o",
+            help="Dump videoList.rmdj to specified JSON file or stdout if '-' is provided",
+        ),
+    ] = None,
+):
+    """Dump videoList.rmdj to JSON format"""
+    game_path = get_game_dir(path) if not videolist_path else Path()
+    vl_path = get_videolist_path(game_path, videolist_path)
+
+    video_list = VideoList(vl_path, is_game_dir=bool(not videolist_path))
+
+    out_path = output
+    if out_path == Path("-"):
+        out_path = None
+
+    video_list.dump(out_path)
+
+
+@videolist_app.command("patch")
+def patch_videolist(
+    path: Annotated[
+        Path | None,
+        typer.Argument(
+            help="Path to root game folder", exists=True, dir_okay=True, readable=True
+        ),
+    ] = None,
+    videolist_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Path to videoList.rmdj file (defaults to data/videoList.rmdj inside game folder)",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ] = None,
+    server: Annotated[
+        str,
+        typer.Option(
+            "--server",
+            "-s",
+            help="Custom streaming server host to patch with",
+        ),
+    ] = "127.0.0.1:10000",
+):
+    """Patch videoList.rmdj to point to a custom QuantumStreamer compatible server"""
+    game_path = get_game_dir(path) if not videolist_path else Path()
+    vl_path = get_videolist_path(game_path, videolist_path)
+
+    video_list = VideoList(vl_path, is_game_dir=bool(not videolist_path))
+    video_list.patch(server)
+
+
+@videolist_app.command("build")
+def build_videolist(
+    input: Annotated[
+        Path,
+        typer.Argument(
+            help="Path to the JSON file to build from",
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+        ),
+    ],
+    path: Annotated[
+        Path | None,
+        typer.Option(
+            "--path",
+            "-p",
+            help="Path to root game folder to save the built rmdj",
+            exists=True,
+            dir_okay=True,
+            readable=True,
+        ),
+    ] = None,
+    videolist_path: Annotated[
+        Path | None,
+        typer.Option(
+            help="Output path for the built videoList.rmdj file (defaults to data/videoList.rmdj inside game folder)",
+            file_okay=True,
+            dir_okay=False,
+            writable=True,
+        ),
+    ] = None,
+):
+    """Build videoList.rmdj from a JSON file"""
+    game_path = get_game_dir(path) if not videolist_path else Path()
+    vl_path = get_videolist_path(game_path, videolist_path)
+
+    VideoList.build(input, vl_path)
 
 
 class VideoList:
-
     @property
     def episode_list(self) -> dict[str, str]:
         return self.__videoList
@@ -42,7 +157,7 @@ class VideoList:
 
     def dump(self, dump_path: Path | None = None):
         if dump_path is None:
-            print(json.dumps(self.__videoList, indent=4))
+            logger.print(json.dumps(self.__videoList, indent=4))
             return
 
         # Dump the videoList to the specified path

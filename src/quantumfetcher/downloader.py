@@ -1,362 +1,256 @@
-import re
-import time
-from math import ceil
 from pathlib import Path
+from typing import Any, cast
 
-import requests
-from requests.adapters import HTTPAdapter, Retry
-from requests.exceptions import ChunkedEncodingError
-from rich.console import Group
-from rich.live import Live
-from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TaskProgressColumn,
-    TextColumn,
-    TimeElapsedColumn,
-    TimeRemainingColumn,
-    TransferSpeedColumn,
-)
+import yt_dlp
 
-from quantumfetcher.constants import CHUNK_SIZE, USER_AGENT
-from quantumfetcher.dataclasses.stream_audio import AudioStream
-from quantumfetcher.dataclasses.stream_text import TextStream
-from quantumfetcher.dataclasses.stream_video import VideoStream
-from quantumfetcher.enumerators.type_manifest import ManifestType
-from quantumfetcher.enumerators.type_stream import StreamType
-from quantumfetcher.manifests.base import BaseManifest
-from quantumfetcher.manifests.client import ClientManifest
-from quantumfetcher.manifests.server import ServerManifest
+from quantumfetcher.constants import USER_AGENT
+from quantumfetcher.enumerators.language import LanguageMap
+from quantumfetcher.logger import logger
+from quantumfetcher.manifest import generate_local_manifests
+from quantumfetcher.media import post_process_media_file
 from quantumfetcher.subtitles import extract_subtitles
-from quantumfetcher.video_list import VideoList
 
 
 class Downloader:
-
-    __progress_overall = Progress(
-        SpinnerColumn(finished_text="\u2713"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-    )
-
-    __progress_stream = Progress(
-        SpinnerColumn(finished_text="\u2713"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-    )
-
-    __progress_media = Progress(
-        SpinnerColumn(finished_text="\u2713"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-    )
-
-    __progress_group = Group(__progress_overall, __progress_stream, __progress_media)
-
     def __init__(self):
-        self.__session = requests.Session()
-        self.__session.headers.update({"User-Agent": USER_AGENT})
+        self.ydl_opts: dict[str, Any] = {
+            "http_headers": {"User-Agent": USER_AGENT},
+            "allow_unplayable_formats": True,
+            "retries": 10,
+            "fragment_retries": 10,
+            "no_warnings": True,
+            "quiet": True,
+            "noprogress": True,
+        }
 
-        retries = Retry(total=10, backoff_factor=3)
+    def _create_hook(self, media_name: str):
+        task_id = logger.progress_media.add_task(
+            f"Downloading {media_name}...", total=None, speed="", eta="-:--:--"
+        )
 
-        self.__session.mount("http://", HTTPAdapter(max_retries=retries))
+        def yt_dlp_hook(d):
+            if d["status"] == "downloading":
+                downloaded = d.get("downloaded_bytes") or 0
+                total = d.get("total_bytes") or d.get("total_bytes_estimate")
 
-    def __fetch_file(self, url: str) -> str:
-        headers = self.__session.headers.copy()  # type: ignore
-        headers["Accept-Encoding"] = "deflate"
+                speed = d.get("_speed_str", "").strip()
+                
+                eta_val = d.get("eta")
+                if eta_val is not None:
+                    eta_sec = int(eta_val)
+                    h, rem = divmod(eta_sec, 3600)
+                    m, s = divmod(rem, 60)
+                    eta = f"{h}:{m:02d}:{s:02d}"
+                else:
+                    eta = "-:--:--"
 
-        r = requests.get(url, headers=headers)
-        r.raise_for_status()
+                kwargs = {"completed": downloaded, "speed": speed, "eta": eta}
+                if total:
+                    kwargs["total"] = total
 
-        return r.content.decode()
+                cast(Any, logger.progress_media).update(task_id, **kwargs)
+            elif d["status"] == "finished":
+                total = d.get("total_bytes") or d.get("downloaded_bytes") or 0
+                cast(Any, logger.progress_media).update(
+                    task_id, completed=total, total=total, speed="", eta="-:--:--"
+                )
+                logger.progress_media.remove_task(task_id)
 
-    def fetch_manifest(
-        self, manifest_type: ManifestType, manifest_url: str
-    ) -> BaseManifest:
-        content = self.__fetch_file(manifest_url)
-
-        match manifest_type:
-            case ManifestType.Client:
-                return ClientManifest(content)
-            case ManifestType.Server:
-                return ServerManifest(content)
+        return yt_dlp_hook
 
     def download(
         self,
-        video_list: VideoList,
-        manifests: dict[str, dict[ManifestType, BaseManifest]],
+        video_list,
+        episode_id: str,
+        manifest_url: str,
         episodes_path: Path,
-        video_streams: list,
-        audio_streams: list,
-        text_streams: list,
-        extract_subtitles: bool,
+        video_format_ids: list[str],
+        audio_format_ids: list[str],
+        text_langs: list[str],
+        extract_subs: bool,
     ):
-        self.__video_list = video_list
-        self.__manifests = manifests
-        self.__download_path = episodes_path
-        self.__streams_video = video_streams
-        self.__streams_audio = audio_streams
-        self.__streams_text = text_streams
-        self.__extract_subtitles = extract_subtitles
+        episode_dir = episodes_path / episode_id
+        episode_dir.mkdir(parents=True, exist_ok=True)
 
-        with Live(self.__progress_group, refresh_per_second=10):
-            task_id = self.__progress_overall.add_task(
-                "Downloading episodes...",
-                total=len(manifests),
-            )
+        base_name = episode_id
+        if episode_id in video_list.episode_list:
+            url_path = video_list.episode_list[episode_id].split("?")[0]
+            parts = url_path.split("/")
+            for part in parts:
+                if part.endswith(".ism"):
+                    base_name = part.replace(".ism", "")
+                    break
 
-            for episode_id, _ in manifests.items():
-                self.__download_episode(episode_id)
-                self.__progress_overall.update(task_id, advance=1)
-
-    def __get_episode_manifests(
-        self, episode_id
-    ) -> tuple[ClientManifest, ServerManifest]:
-        episode_manifests = self.__manifests[episode_id]
-        client_manifest = episode_manifests[ManifestType.Client]
-
-        if not isinstance(client_manifest, ClientManifest):
-            raise TypeError(
-                f"Expected ClientManifest for episode {episode_id}, got {type(client_manifest)}"
-            )
-
-        server_manifest = episode_manifests[ManifestType.Server]
-        if not isinstance(server_manifest, ServerManifest):
-            raise TypeError(
-                f"Expected ServerManifest for episode {episode_id}, got {type(server_manifest)}"
-            )
-
-        return client_manifest, server_manifest
-
-    def __download_episode(self, episode_id):
-        episode_path = self.__download_path / episode_id
-        episode_path.mkdir(exist_ok=True, parents=True)
-
-        media_to_download, chunks_per_type = self.__get_streams_to_fetch(episode_id)
-
-        streams_to_download = []
-        for _, streams in media_to_download.items():
-            streams_to_download.extend(streams)
-
-        client_manifest, server_manifest = self.__get_episode_manifests(episode_id)
-        client_manifest_path = server_manifest.get_client_manifest_path()
-
-        if client_manifest_path is None:
-            self.__progress_stream.console.log(
-                f"[red]Error:[/red] Client manifest path not found for episode {episode_id}."
-            )
-            return
-
-        task_id = self.__progress_stream.add_task(
-            f"Downloading episode files for {episode_id}...",
-            total=len(streams_to_download),
+        total_streams = len(video_format_ids) + len(audio_format_ids) + len(text_langs)
+        task_stream = logger.progress_stream.add_task(
+            f"Downloading {episode_id} streams...", total=total_streams
         )
 
-        for stream in streams_to_download:
-            stream_type = None
-            if isinstance(stream, VideoStream):
-                chunks = chunks_per_type[StreamType.Video]
-                stream_type = StreamType.Video
-            elif isinstance(stream, AudioStream):
-                chunks = chunks_per_type[StreamType.Audio]
-                stream_type = StreamType.Audio
-            elif isinstance(stream, TextStream):
-                chunks = chunks_per_type[StreamType.Text]
-                stream_type = StreamType.Text
-            else:
-                raise TypeError(
-                    f"Unknown stream type {type(stream)} for episode {episode_id}."
+        self._download_video(
+            base_name,
+            manifest_url,
+            episode_dir,
+            video_format_ids,
+            task_stream,
+        )
+        self._download_audio(
+            base_name,
+            manifest_url,
+            episode_dir,
+            audio_format_ids,
+            task_stream,
+        )
+        self._download_subtitles(
+            episode_id,
+            base_name,
+            manifest_url,
+            episode_dir,
+            text_langs,
+            extract_subs,
+            task_stream,
+        )
+
+        logger.progress_stream.remove_task(task_stream)
+
+        logger.log("--- Generating Local Manifests ---")
+        try:
+            generate_local_manifests(
+                manifest_url=manifest_url,
+                episode_dir=episode_dir,
+                base_name=base_name,
+                video_format_ids=video_format_ids,
+                audio_format_ids=audio_format_ids,
+                text_langs=text_langs,
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate manifests: {e}")
+
+    def _download_video(
+        self,
+        base_name,
+        manifest_url,
+        episode_dir,
+        video_format_ids,
+        task_stream,
+    ):
+        for fmt_id in video_format_ids:
+            filename = f"{base_name}_{fmt_id}.ismv"
+            out_path = episode_dir / filename
+            if out_path.exists():
+                logger.log(
+                    f"Skipping video {filename}, already exists. Post processing media file..."
                 )
+                post_process_media_file(out_path)
+                logger.progress_stream.update(task_stream, advance=1)
+                continue
 
-            self.__download_stream(
-                episode_id,
-                episode_path,
-                stream,
-                stream_type,
-                chunks,
-            )
+            opts: dict[str, Any] = dict(self.ydl_opts)
+            opts["format"] = fmt_id
+            opts["outtmpl"] = str(out_path)
+            opts["progress_hooks"] = [self._create_hook(filename)]
 
-            self.__progress_stream.update(task_id, advance=1)
+            logger.log(f"--- Downloading Video: {filename} ---")
+            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+                ydl.download([manifest_url])
+            post_process_media_file(out_path)
 
-        client_manifest.save(episode_path / client_manifest_path, streams_to_download)
-        server_manifest.save(
-            episode_path / self.__video_list.get_server_manifest_name(episode_id),
-            streams_to_download,
-        )
+            logger.progress_stream.update(task_stream, advance=1)
 
-        for media_task in self.__progress_media.tasks:
-            self.__progress_media.remove_task(media_task.id)
+    def _download_audio(
+        self,
+        base_name,
+        manifest_url,
+        episode_dir,
+        audio_format_ids,
+        task_stream,
+    ):
+        for fmt_id in audio_format_ids:
+            lang = fmt_id.split("-")[0] if "-" in fmt_id else fmt_id
+            filename = f"{base_name}_{lang}.isma"
+            out_path = episode_dir / filename
+            if out_path.exists():
+                logger.log(
+                    f"Skipping audio {filename}, already exists. Post processing media file..."
+                )
+                post_process_media_file(out_path)
+                logger.progress_stream.update(task_stream, advance=1)
+                continue
 
-        self.__progress_stream.remove_task(task_id)
+            opts: dict[str, Any] = dict(self.ydl_opts)
+            opts["format"] = fmt_id
+            opts["outtmpl"] = str(out_path)
+            opts["progress_hooks"] = [self._create_hook(filename)]
 
-    def __get_streams_to_fetch(self, episode_id):
-        client_manifest, _ = self.__get_episode_manifests(episode_id)
+            logger.log(f"--- Downloading Audio: {filename} ---")
+            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+                ydl.download([manifest_url])
+            post_process_media_file(out_path)
 
-        media = {}
-        chunks = {}
+            logger.progress_stream.update(task_stream, advance=1)
 
-        def filter_streams(streams, stream_type):
-            filtered_streams = []
-
-            if stream_type == StreamType.Video:
-                wanted_bitrates = [s.bitrate for s in self.__streams_video]
-                for target in wanted_bitrates:
-                    candidates = [
-                        stream for stream in streams if stream.bitrate <= target
-                    ]
-
-                    if candidates:
-                        best = max(candidates, key=lambda s: s.bitrate)
-
-                        if best not in filtered_streams:
-                            filtered_streams.append(best)
-            elif stream_type == StreamType.Audio:
-                wanted_bitrates = [s.bitrate for s in self.__streams_audio]
-                wanted_languages = [s.language for s in self.__streams_audio]
-                for lang in wanted_languages:
-                    for target in wanted_bitrates:
-                        candidates = [
-                            stream
-                            for stream in streams
-                            if stream.language == lang and stream.bitrate <= target
-                        ]
-
-                        if candidates:
-                            best = max(candidates, key=lambda s: s.bitrate)
-
-                            if best not in filtered_streams:
-                                filtered_streams.append(best)
-            elif stream_type == StreamType.Text:
-                wanted_languages = [s.language for s in self.__streams_text]
-                for lang in wanted_languages:
-                    candidates = [
-                        stream for stream in streams if stream.language == lang
-                    ]
-
-                    if candidates:
-                        best = candidates[0]
-
-                        if best not in filtered_streams:
-                            filtered_streams.append(best)
-            else:
-                filtered_streams = streams
-
-            return filtered_streams
-
-        for stream_type in list(StreamType):
-            streams = client_manifest.list_streams(stream_type)
-
-            media[stream_type] = filter_streams(streams, stream_type)
-            chunks[stream_type] = client_manifest.get_chunks_count(stream_type)
-
-        return media, chunks
-
-    def __download_stream(self, episode_id, episode_path, stream, stream_type, chunks):
-        _, server_manifest = self.__get_episode_manifests(episode_id)
-
-        if stream_type == StreamType.Video:
-            stream = server_manifest.get_video_stream(stream.bitrate)
-        else:
-            stream = server_manifest.get_named_stream(
-                stream.name, stream_type, stream.bitrate
-            )
-
-        if stream is None:
-            self.__progress_stream.console.log(
-                f"[red]Error:[/red] Stream {stream} not found in server manifest for episode {episode_id}."
-            )
+    def _download_subtitles(
+        self,
+        episode_id,
+        base_name,
+        manifest_url,
+        episode_dir,
+        text_langs,
+        extract_subs,
+        task_stream,
+    ):
+        if not text_langs:
             return
 
-        filename = stream.attributes.get("src")
-        media_url = self.__video_list.get_media_url(episode_id, filename)
+        for lang in text_langs:
+            filename = f"{base_name}_{lang}_cc.ismt"
+            out_path = episode_dir / filename
 
-        self.__progress_stream.console.log(
-            f"[{episode_id}] Downloading {stream_type.value} media file: {filename}"
-        )
-        self.__download_media(media_url, chunks, episode_path / filename)
+            if out_path.exists():
+                logger.log(f"Skipping subtitles {filename}, already exists.")
+                if extract_subs:
+                    self._extract_subtitles_helper(episode_id, lang, filename, out_path)
+                logger.progress_stream.update(task_stream, advance=1)
+                continue
 
-        if stream_type == StreamType.Text and self.__extract_subtitles:
-            self.__progress_stream.console.log(
-                f"[{episode_id}] Extracting subtitles from {filename}..."
+            yt_lang = LanguageMap.get_value(lang, lang) or lang
+
+            logger.log(f"--- Downloading Subtitles: {filename}...")
+            opts: dict[str, Any] = dict(self.ydl_opts)
+            opts["skip_download"] = True
+            opts["writesubtitles"] = True
+            opts["subtitleslangs"] = [yt_lang]
+            opts["progress_hooks"] = [self._create_hook(filename)]
+
+            base_out_path = episode_dir / f"{base_name}_{lang}_cc"
+            opts["outtmpl"] = str(base_out_path) + ".%(ext)s"
+
+            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+                ydl.download([manifest_url])
+
+            ytdlp_file = episode_dir / f"{base_name}_{lang}_cc.{yt_lang}.ismt"
+            if ytdlp_file.exists():
+                ytdlp_file.rename(out_path)
+                post_process_media_file(out_path)
+            else:
+                logger.log(f"Failed to find downloaded subtitle for {lang} ({yt_lang})")
+
+            if extract_subs and out_path.exists():
+                self._extract_subtitles_helper(episode_id, lang, filename, out_path)
+
+            logger.progress_stream.update(task_stream, advance=1)
+
+    def _extract_subtitles_helper(
+        self, episode_id: str, lang: str, filename: str, out_path: Path
+    ):
+        logger.log(f"Extracting subtitles for {filename}...")
+        try:
+            ep_num = (
+                int(episode_id[1])
+                if episode_id.startswith("J") and len(episode_id) > 1
+                else 0
             )
-            match = re.match(r"J(\d).*", episode_id)
-            episode_id_str = "-1"
+        except ValueError:
+            ep_num = 0
 
-            if match:
-                episode_id_str = match.group(1)
-
-            extract_subtitles(
-                episode_path / filename,
-                episode_num=int(episode_id_str),
-                track_name=stream.parameters.get("trackName", "unknown"),
-            )
-
-            self.__progress_stream.console.log(
-                f"[{episode_id}] Finished extracting subtitles from {filename}."
-            )
-
-    def __download_media(self, mediaUrl: str, chunks: int, outputPath: Path):
-        progress_media = self.__progress_media.add_task(
-            f"Downloading {outputPath.name}..."
-        )
-
-        with requests.head(mediaUrl) as r:
-            r.raise_for_status()
-            contentLength = int(r.headers["Content-Length"])
-
-        self.__progress_media.update(progress_media, total=contentLength)
-
-        chunkSize = max(
-            ceil(contentLength / chunks), CHUNK_SIZE
-        )  # Segment-ish size or 1MB
-
-        if outputPath.exists():
-            # Resume from where we left
-            currentRange = outputPath.stat().st_size
-        else:
-            currentRange = 0
-
-        self.__progress_media.update(progress_media, completed=currentRange)
-
-        with open(outputPath, "ab") as f:
-            while currentRange < contentLength:
-                endRange = min(currentRange + chunkSize, contentLength)
-
-                headers = self.__session.headers.copy()  # type: ignore
-                headers["X-MS-Range"] = f"bytes={currentRange}-{endRange}"
-
-                try:
-                    with self.__session.get(
-                        mediaUrl, headers=headers, stream=True
-                    ) as r:
-                        r.raise_for_status()
-
-                        dlBytes = 0
-
-                        for chunk in r.iter_content(chunk_size=1024):
-                            f.write(chunk)
-                            currentRange += len(chunk)
-                            dlBytes += len(chunk)
-
-                        self.__progress_media.update(progress_media, advance=dlBytes)
-                except ChunkedEncodingError:
-                    self.__progress_media.console.log(
-                        f"[red]Error:[/red] Chunked encoding error while downloading {outputPath.name}. Retrying..."
-                    )
-                    time.sleep(1)
-                    continue
+        track_name = f"{lang}_captions"
+        extract_subtitles(out_path, ep_num, track_name)

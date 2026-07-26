@@ -1,294 +1,360 @@
 from pathlib import Path
+from typing import Any, cast
+import xml.etree.ElementTree as ET
 
-import humanreadable as hr
-from rich.console import Console
-from rich.progress import Progress
+import humanize
+import requests
+import yt_dlp
 from rich.table import Table
 
+from quantumfetcher.constants import USER_AGENT
 from quantumfetcher.downloader import Downloader
-from quantumfetcher.enumerators.type_manifest import ManifestType
-from quantumfetcher.enumerators.type_stream import StreamType
-from quantumfetcher.helpers import deduplicate_streams, filter_streams, get_streams
-from quantumfetcher.manifests.base import BaseManifest
+from quantumfetcher.enumerators.language import Language, LanguageMap
+from quantumfetcher.enumerators.stream import StreamType
+from quantumfetcher.logger import logger
 from quantumfetcher.prompt import Prompt
 from quantumfetcher.video_list import VideoList
 
 
 class Flow:
-
-    def __init__(self, interactive: bool, video_list: VideoList, **kwargs) -> None:
+    def __init__(self, video_list: VideoList, **kwargs) -> None:
         self.__downloader = Downloader()
-
-        self.__interactive = interactive
         self.__video_list = video_list
 
-        self.__episodes_to_fetch: list[str] | None = kwargs["episodes"]
+        self.__episodes_to_fetch: list[str] | None = kwargs.get("episodes")
         self.__episodes_path: Path = kwargs["episodes_path"]
 
-        self.__fetch_video_resolutions: list[str] | None = kwargs["video_resolutions"]
-        self.__fetch_video_bitrates: list[str] | None = kwargs["video_bitrates"]
-        self.__fetch_audio_langs: list[str] | None = kwargs["audio_langs"]
-        self.__fetch_audio_bitrates: list[str] | None = kwargs["audio_bitrates"]
-        self.__fetch_text_langs: list[str] | None = kwargs["text_langs"]
-        self.__fetch_text_bitrates: list[str] | None = kwargs["text_bitrates"]
-
-        show_formats = kwargs["show_formats"]
-        extract_subtitles = kwargs["extract_subtitles"]
-
-        self.__fetch_manifests()
-        self.__prepare_streams()
-
-        if show_formats:
-            return self.__dump_formats()
-
-        if self.__interactive and not extract_subtitles:
-            if not self.__fetch_text_streams:
-                pass
-            else:
-                extract_subtitles = Prompt.extract_subtitles()
-
-        self.__downloader.download(
-            video_list=self.__video_list,
-            manifests=self.__manifests,
-            episodes_path=self.__episodes_path,
-            video_streams=self.__fetch_video_streams,
-            audio_streams=self.__fetch_audio_streams,
-            text_streams=self.__fetch_text_streams,
-            extract_subtitles=extract_subtitles,
+        self.__fetch_video_resolutions: list[str] | None = kwargs.get(
+            "video_resolutions"
         )
+        self.__fetch_video_bitrates: list[str] | None = kwargs.get("video_bitrates")
+        self.__fetch_audio_langs: list[str] | None = kwargs.get("audio_langs")
+        self.__fetch_audio_bitrates: list[str] | None = kwargs.get("audio_bitrates")
+        self.__fetch_text_langs: list[str] | None = kwargs.get("text_langs")
+        self.__fetch_text_bitrates: list[str] | None = kwargs.get("text_bitrates")
 
-    def __fetch_manifests(self):
-        self.__manifests: dict[str, dict[ManifestType, BaseManifest]] = {}
+        self.__extract_subtitles = kwargs.get("extract_subtitles", False)
+        self.__show_formats = kwargs.get("show_formats", False)
+        self.__interactive = kwargs.get("interactive", False)
 
+        self.__run()
+
+    def __run(self):
         episodes = self.__video_list.episode_list
-
-        # If episodes to fetch is provided, filter the video list
-        # Print warning if episodes specified are not in the video list
-        if self.__episodes_to_fetch is not None:
+        if self.__episodes_to_fetch:
             if self.__episodes_to_fetch == ["all"]:
                 self.__episodes_to_fetch = list(episodes.keys())
             else:
                 episodes = {
-                    episode_id: url
-                    for episode_id, url in episodes.items()
-                    if episode_id in self.__episodes_to_fetch
+                    k: v for k, v in episodes.items() if k in self.__episodes_to_fetch
                 }
-        elif self.__interactive:
-            self.__episodes_to_fetch = Prompt.select_episodes(self.__video_list)
-            episodes = {
-                episode_id: url
-                for episode_id, url in episodes.items()
-                if episode_id in self.__episodes_to_fetch
-            }
-
-        with Progress(transient=True) as progress:
-            if self.__episodes_to_fetch:
-                if len(episodes) != len(self.__episodes_to_fetch):
-                    missing_episodes = set(self.__episodes_to_fetch) - set(episodes)
-                    progress.console.log(
-                        f"[yellow]Warning![/yellow] The following episodes are not in the video list: {missing_episodes}, they will be skipped."
-                    )
-
-            for episode_id, client_manifest_url in progress.track(
-                episodes.items(),
-                description="Fetching manifests...",
-            ):
-                server_manifest_url = self.__video_list.get_server_manifest_url(
-                    episode_id
-                )
-
-                progress.console.log(
-                    f"Fetching client manifest for episode {episode_id}..."
-                )
-
-                client_manifest = self.__downloader.fetch_manifest(
-                    manifest_type=ManifestType.Client,
-                    manifest_url=client_manifest_url,
-                )
-
-                progress.console.log(
-                    f"Fetching server manifest for episode {episode_id}..."
-                )
-
-                server_manifest = self.__downloader.fetch_manifest(
-                    manifest_type=ManifestType.Server,
-                    manifest_url=server_manifest_url,
-                )
-
-                self.__manifests[episode_id] = {
-                    ManifestType.Client: client_manifest,
-                    ManifestType.Server: server_manifest,
-                }
-
-    def __prepare_streams(self):
-        qualities = get_streams(self.__manifests)
 
         if self.__interactive:
-            skip_video_prompt = (
-                self.__fetch_video_resolutions is not None
-                and self.__fetch_video_bitrates is not None
+            episodes = self._interactive_preload(episodes)
+            if not episodes:
+                logger.error("No available episodes to download. Exiting.")
+                return
+
+        with logger.live_group():
+            task_overall = logger.progress_overall.add_task(
+                "Downloading episodes...", total=len(episodes)
             )
-            skip_audio_prompt = (
-                self.__fetch_audio_langs is not None
-                and self.__fetch_audio_bitrates is not None
+
+            for ep_id, url in episodes.items():
+                logger.log(f"[cyan]Downloading {ep_id}...[/cyan]")
+                try:
+                    self.__process_episode(ep_id, url)
+                except Exception as e:
+                    logger.error(f"Failed to process {ep_id}: {e}")
+
+                logger.progress_overall.update(task_overall, advance=1)
+
+    def _interactive_preload(self, episodes: dict[str, str]) -> dict[str, str]:
+        logger.log("[cyan]Preloading manifests to fetch available streams...[/cyan]")
+        ydl_opts: dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "http_headers": {"User-Agent": USER_AGENT},
+        }
+
+        raw_vid = set()
+        raw_aud = set()
+        raw_txt = set()
+
+        total_duration_sec = 0.0
+        valid_episodes = {}
+
+        with logger.live_overall():
+            task_preload = logger.progress_overall.add_task(
+                "Preloading manifests...", total=len(episodes)
             )
-            skip_text_prompt = (
-                self.__fetch_text_langs is not None
-                and self.__fetch_text_bitrates is not None
+            with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+                for ep_id, url in episodes.items():
+                    try:
+                        duration_sec = self._extract_duration(url)
+                        info = ydl.extract_info(url, download=False)
+
+                        valid_episodes[ep_id] = url
+                        total_duration_sec += duration_sec
+
+                        self._parse_formats(info, raw_vid, raw_aud, raw_txt)
+
+                    except Exception as e:
+                        logger.error(f"Failed to preload {ep_id} (Unavailable): {e}")
+
+                    logger.progress_overall.update(task_preload, advance=1)
+
+            logger.progress_overall.remove_task(task_preload)
+
+        if not valid_episodes:
+            return {}
+
+        self._prompt_streams(
+            valid_episodes, total_duration_sec, raw_vid, raw_aud, raw_txt
+        )
+        return valid_episodes
+
+    def _extract_duration(self, url: str) -> float:
+        client_resp = requests.get(url, headers={"User-Agent": USER_AGENT})
+        client_resp.raise_for_status()
+        c_root = ET.fromstring(client_resp.text)
+        duration_ticks = int(c_root.attrib.get("Duration", 0))
+        timescale = int(c_root.attrib.get("TimeScale", 10000000))
+        return duration_ticks / float(timescale)
+
+    def _parse_formats(self, info: Any, raw_vid: set, raw_aud: set, raw_txt: set):
+        formats = info.get("formats", [])
+        for f in formats:
+            if f.get("vcodec") != "none":
+                res = f.get("height")
+                width = f.get("width", 0)
+                vbr = f.get("vbr")
+                bps = (
+                    int(vbr * 1000)
+                    if vbr
+                    else (int(f["format_id"]) if f["format_id"].isdigit() else 0)
+                )
+                codec_raw = f.get("vcodec", "Unknown")
+                codec = "H264" if codec_raw.startswith("avc1") else codec_raw
+
+                if res:
+                    raw_vid.add((res, width, bps, codec, f["format_id"]))
+
+            if f.get("acodec") != "none":
+                lang_code = f.get("language", "unk")
+                try:
+                    lang_name = Language(lang_code).name
+                except ValueError:
+                    lang_name = lang_code
+
+                codec_raw = f.get("acodec", "Unknown")
+                codec = "AACL" if codec_raw.startswith("mp4a") else codec_raw
+                asr = f.get("asr", 48000) or 48000
+                channels = f.get("audio_channels", 2) or 2
+
+                fmt_parts = f["format_id"].split("-")
+                fallback_bps = (
+                    int(fmt_parts[-1]) * 1000
+                    if len(fmt_parts) > 1 and fmt_parts[-1].isdigit()
+                    else 256000
+                )
+                abr = f.get("abr")
+                bps = int(abr * 1000) if abr else fallback_bps
+
+                raw_aud.add((lang_name, codec, asr, channels, bps, f["format_id"]))
+
+        for yt_lang in info.get("subtitles", {}).keys():
+            game_lang = LanguageMap.get_key(yt_lang, yt_lang)
+            try:
+                lang_name = Language(yt_lang).name
+            except ValueError:
+                lang_name = yt_lang
+
+            raw_txt.add((lang_name, game_lang, 256000))
+
+    def _prompt_streams(
+        self,
+        valid_episodes: dict,
+        total_duration_sec: float,
+        raw_vid: set,
+        raw_aud: set,
+        raw_txt: set,
+    ):
+        avg_duration_sec = total_duration_sec / len(valid_episodes)
+
+        qualities_list = {
+            StreamType.Video: [],
+            StreamType.Audio: [],
+            StreamType.Text: [],
+        }
+
+        for res, width, bps, codec, format_id in sorted(
+            raw_vid, key=lambda x: x[2], reverse=True
+        ):
+            size_bytes = (bps * avg_duration_sec) / 8
+            size_str = humanize.naturalsize(size_bytes, binary=False)
+            label = f"{res}p ({codec} - {width}x{res} @ {bps} bps) [~{size_str} / ep]"
+            qualities_list[StreamType.Video].append((label, format_id))
+
+        for lang_name, codec, asr, channels, bps, format_id in sorted(
+            raw_aud, key=lambda x: (x[0], -x[4])
+        ):
+            size_bytes = (bps * avg_duration_sec) / 8
+            size_str = humanize.naturalsize(size_bytes, binary=False)
+            label = f"{lang_name} ({codec} - {asr}hz, 16-bit, {channels} channels @ {bps} bps) [~{size_str} / ep]"
+            qualities_list[StreamType.Audio].append((label, format_id))
+
+        for lang_name, t_lang, bps in sorted(raw_txt, key=lambda x: (x[0], -x[2])):
+            size_bytes = (bps * avg_duration_sec) / 8
+            size_str = humanize.naturalsize(size_bytes, binary=False)
+            label = (
+                f"{lang_name} (TTML - {t_lang}_captions @ {bps} bps) [~{size_str} / ep]"
             )
-            answers = Prompt.select_streams(
-                qualities,
-                skip_video_prompt,
-                skip_audio_prompt,
-                skip_text_prompt,
-            )
-            self.__fetch_video_streams = answers.get(StreamType.Video, [])
-            self.__fetch_audio_streams = answers.get(StreamType.Audio, [])
-            self.__fetch_text_streams = answers.get(StreamType.Text, [])
+            qualities_list[StreamType.Text].append((label, t_lang))
+
+        selected_streams = Prompt.select_streams(qualities_list)
+
+        vid_sel = selected_streams.get(StreamType.Video, [])
+        self.__fetch_video_resolutions = vid_sel if vid_sel else ["none"]
+
+        aud_sel = selected_streams.get(StreamType.Audio, [])
+        self.__fetch_audio_langs = aud_sel if aud_sel else ["none"]
+
+        text_sel = selected_streams.get(StreamType.Text, [])
+        self.__fetch_text_langs = text_sel if text_sel else ["none"]
+
+        if self.__fetch_text_langs != ["none"]:
+            self.__extract_subtitles = Prompt.extract_subtitles()
+
+    def __process_episode(self, episode_id: str, url: str):
+        ydl_opts: dict[str, Any] = {
+            "quiet": True,
+            "no_warnings": True,
+            "http_headers": {"User-Agent": USER_AGENT},
+        }
+
+        task_extract = logger.progress_stream.add_task(
+            f"Extracting stream formats for {episode_id} via yt-dlp...", total=None
+        )
+        with yt_dlp.YoutubeDL(cast(Any, ydl_opts)) as ydl:
+            info = ydl.extract_info(url, download=False)
+        logger.progress_stream.remove_task(task_extract)
+
+        if self.__show_formats:
+            self.__dump_formats(info)
             return
 
-        # Video
-        if (
-            self.__fetch_video_resolutions is None
-            and self.__fetch_video_bitrates is None
-        ):
-            video_streams = qualities[StreamType.Video][:1]
+        video_ids, audio_ids, text_langs = self._select_format_ids(info)
+
+        logger.log(f"Selected Video Formats: {video_ids}")
+        logger.log(f"Selected Audio Formats: {audio_ids}")
+        logger.log(f"Selected Subtitle Langs: {text_langs}")
+
+        self.__downloader.download(
+            video_list=self.__video_list,
+            episode_id=episode_id,
+            manifest_url=url,
+            episodes_path=self.__episodes_path,
+            video_format_ids=video_ids,
+            audio_format_ids=audio_ids,
+            text_langs=text_langs,
+            extract_subs=self.__extract_subtitles,
+        )
+
+    def _select_format_ids(self, info: Any) -> tuple[list[str], list[str], list[str]]:
+        video_ids = []
+        audio_ids = []
+
+        formats = info.get("formats", [])
+        video_formats = [f for f in formats if f.get("vcodec") != "none"]
+        audio_formats = [f for f in formats if f.get("acodec") != "none"]
+
+        if not self.__fetch_video_resolutions and not self.__fetch_video_bitrates:
+            if video_formats:
+                video_ids.append(video_formats[-1]["format_id"])
         else:
-            video_streams = qualities[StreamType.Video]
+            for f in video_formats:
+                res = f"{f.get('height', 0)}p" if f.get("height") else None
+                vbr = str(f.get("vbr", ""))
 
-            if self.__fetch_video_resolutions:
-                if self.__fetch_video_resolutions == ["all"]:
-                    pass
-                else:
-                    video_streams = [
-                        v
-                        for v in video_streams
-                        if f"{v.height}p" in self.__fetch_video_resolutions
-                    ]
+                if self.__fetch_video_resolutions and (
+                    res in self.__fetch_video_resolutions
+                    or f["format_id"] in self.__fetch_video_resolutions
+                ):
+                    video_ids.append(f["format_id"])
+                elif (
+                    self.__fetch_video_resolutions
+                    and "all" in self.__fetch_video_resolutions
+                ):
+                    video_ids.append(f["format_id"])
+                elif self.__fetch_video_bitrates and vbr in self.__fetch_video_bitrates:
+                    video_ids.append(f["format_id"])
 
-            if self.__fetch_video_bitrates:
-                if self.__fetch_video_bitrates == ["all"]:
-                    pass
-                else:
-                    video_streams = [
-                        v
-                        for v in video_streams
-                        if str(v.bitrate) in self.__fetch_video_bitrates
-                    ]
-
-        self.__fetch_video_streams = deduplicate_streams(
-            video_streams, key_func=lambda x: x.height, reverse=True
-        )
-
-        # Audio
-        if self.__fetch_audio_langs is None and self.__fetch_audio_bitrates is None:
-            audio_streams = [
-                a for a in qualities[StreamType.Audio] if a.language.name == "English"
-            ][:1]
+        if not self.__fetch_audio_langs and not self.__fetch_audio_bitrates:
+            for f in audio_formats:
+                if f.get("language") in ["eng", "enus"]:
+                    audio_ids.append(f["format_id"])
         else:
-            audio_streams = filter_streams(
-                qualities[StreamType.Audio],
-                self.__fetch_audio_langs,
-                self.__fetch_audio_bitrates,
-                lang_attr="language",
-                bitrate_attr="bitrate",
+            for f in audio_formats:
+                lang = f.get("language", "")
+                matched = False
+
+                if self.__fetch_audio_langs:
+                    if "all" in self.__fetch_audio_langs:
+                        matched = True
+                    elif f["format_id"] in self.__fetch_audio_langs:
+                        matched = True
+                    else:
+                        for lang_prefix in self.__fetch_audio_langs:
+                            if lang.startswith(lang_prefix) or lang_prefix.startswith(
+                                lang
+                            ):
+                                matched = True
+
+                if (
+                    self.__fetch_audio_bitrates
+                    and str(f.get("abr", "")) in self.__fetch_audio_bitrates
+                ):
+                    matched = True
+
+                if matched:
+                    audio_ids.append(f["format_id"])
+
+        text_langs = self.__fetch_text_langs or []
+        if not text_langs and not self.__fetch_text_bitrates:
+            text_langs = ["enus"]
+        if "all" in text_langs:
+            text_langs = list(info.get("subtitles", {}).keys())
+
+        video_ids = (
+            list(set(video_ids)) if self.__fetch_video_resolutions != ["none"] else []
+        )
+        audio_ids = list(set(audio_ids)) if self.__fetch_audio_langs != ["none"] else []
+        text_langs = text_langs if text_langs != ["none"] else []
+
+        return video_ids, audio_ids, text_langs
+
+    def __dump_formats(self, info: Any):
+        logger.print("[cyan]Available Formats:[/cyan]")
+        table = Table(title="Stream Formats")
+        table.add_column("Type")
+        table.add_column("ID")
+        table.add_column("Resolution")
+        table.add_column("Bitrate")
+        table.add_column("Language")
+        table.add_column("Codec")
+
+        for f in info.get("formats", []):
+            type_str = "Video" if f.get("vcodec") != "none" else "Audio"
+            res = f"{f.get('height', 'N/A')}p" if f.get("height") else "N/A"
+            bitrate = str(f.get("vbr", f.get("abr", "N/A")))
+            table.add_row(
+                type_str,
+                f["format_id"],
+                res,
+                bitrate,
+                f.get("language", "N/A"),
+                f.get("vcodec", f.get("acodec", "N/A")),
             )
 
-        self.__fetch_audio_streams = deduplicate_streams(
-            sorted(
-                audio_streams,
-                key=lambda x: (x.language.value, x.language.name, -x.bitrate),
-            ),
-            key_func=lambda x: (x.language.value, x.language.name),
-        )
-
-        # Text
-        if self.__fetch_text_langs is None and self.__fetch_text_bitrates is None:
-            text_streams = [
-                t for t in qualities[StreamType.Text] if t.language.name == "English"
-            ][:1]
-        else:
-            text_streams = filter_streams(
-                qualities[StreamType.Text],
-                self.__fetch_text_langs,
-                self.__fetch_text_bitrates,
-                lang_attr="language",
-                bitrate_attr="bitrate",
-            )
-        self.__fetch_text_streams = deduplicate_streams(
-            sorted(text_streams, key=lambda x: (x.name, -x.bitrate)),
-            key_func=lambda x: x.name,
-        )
-
-    def __dump_formats(self):
-        qualities = get_streams(self.__manifests)
-
-        video_streams = self.__fetch_video_streams or qualities[StreamType.Video]
-        audio_streams = self.__fetch_audio_streams or qualities[StreamType.Audio]
-        text_streams = self.__fetch_text_streams or qualities[StreamType.Text]
-
-        video_streams = deduplicate_streams(
-            video_streams, key_func=lambda x: x.height, reverse=True
-        )
-        audio_streams = deduplicate_streams(
-            audio_streams, key_func=lambda x: (x.language.name, -x.bitrate)
-        )
-        text_streams = deduplicate_streams(
-            text_streams, key_func=lambda x: (x.language.name, -x.bitrate)
-        )
-
-        console = Console()
-
-        video_table = Table(title="Video Streams")
-        video_table.add_column("Resolution")
-        video_table.add_column("Bitrate")
-        video_table.add_column("Codec")
-
-        for v in qualities[StreamType.Video]:
-            video_table.add_row(
-                f"{v.height}p ({v.width}x{v.height})",
-                hr.BitsPerSecond(
-                    str(v.bitrate), default_unit=hr.BitsPerSecond.Unit.BPS
-                ).to_humanreadable(style="short"),
-                v.codec,
-            )
-
-        audio_table = Table(title="Audio Streams")
-        audio_table.add_column("Language")
-        audio_table.add_column("Language Code")
-        audio_table.add_column("Bitrate")
-        audio_table.add_column("Sampling Rate")
-        audio_table.add_column("Bits Per Sample")
-        audio_table.add_column("Channels")
-        audio_table.add_column("Codec")
-
-        for a in qualities[StreamType.Audio]:
-            audio_table.add_row(
-                a.language.name,
-                a.language.value,
-                hr.BitsPerSecond(
-                    str(a.bitrate), default_unit=hr.BitsPerSecond.Unit.BPS
-                ).to_humanreadable(style="short"),
-                f"{a.samplingRate} Hz",
-                f"{a.bitsPerSample}-bit",
-                f"{a.channels} channels",
-                a.codec,
-            )
-
-        text_table = Table(title="Text Streams")
-        text_table.add_column("Language")
-        text_table.add_column("Language Code")
-        text_table.add_column("Name")
-        text_table.add_column("Codec")
-
-        for t in qualities[StreamType.Text]:
-            text_table.add_row(
-                t.language.name,
-                t.language.value,
-                t.name,
-                t.codec,
-            )
-
-        console.print(video_table)
-        console.print(audio_table)
-        console.print(text_table)
+        logger.print(table)
