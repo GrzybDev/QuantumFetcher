@@ -35,6 +35,67 @@ def _build_mfra(offsets: list[int], timestamps: list[int]) -> bytes:
     mfra = tfra_box + mfro_box
     return struct.pack(">I", 8 + len(mfra)) + b"mfra" + mfra
 
+def ensure_stsz_in_moov(moov_data: bytes) -> tuple[bytes, bool]:
+    def parse_box(data: bytes, pos: int):
+        if pos + 8 > len(data):
+            return None
+        size = int.from_bytes(data[pos : pos + 4], "big")
+        box_type = data[pos + 4 : pos + 8]
+        header_size = 8
+        if size == 1:
+            size = int.from_bytes(data[pos + 8 : pos + 16], "big")
+            header_size = 16
+        elif size == 0:
+            size = len(data) - pos
+        return box_type, size, header_size
+
+    def walk(data: bytes) -> tuple[bytearray, bool]:
+        pos = 0
+        out = bytearray()
+        changed = False
+        while pos < len(data):
+            box = parse_box(data, pos)
+            if not box:
+                out += data[pos:]
+                break
+            btype, size, hsize = box
+            payload = data[pos + hsize : pos + size]
+
+            if btype in (b"moov", b"trak", b"mdia", b"minf", b"stbl"):
+                new_payload, child_changed = walk(payload)
+                if btype == b"stbl":
+                    p = 0
+                    has_stsz = False
+                    while p < len(new_payload):
+                        child_box = parse_box(new_payload, p)
+                        if not child_box:
+                            break
+                        if child_box[0] in (b"stsz", b"stz2"):
+                            has_stsz = True
+                            break
+                        p += child_box[1]
+
+                    if not has_stsz:
+                        # 20 bytes: size(20), type(stsz), version/flags(0), sample_size(0), sample_count(0)
+                        new_payload += b"\x00\x00\x00\x14stsz\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+                        child_changed = True
+
+                if child_changed:
+                    changed = True
+                    new_size = hsize + len(new_payload)
+                    if hsize == 8:
+                        out += new_size.to_bytes(4, "big") + btype + new_payload
+                    else:
+                        out += (1).to_bytes(4, "big") + btype + new_size.to_bytes(8, "big") + new_payload
+                else:
+                    out += data[pos : pos + size]
+            else:
+                out += data[pos : pos + size]
+            pos += size
+        return out, changed
+
+    return walk(moov_data)
+
 
 def post_process_media_file(file_path: Path):
     """Scan an ISMV/ISMA/ISMT file produced by yt-dlp, extract moof timestamps, and append mfra."""
@@ -42,9 +103,15 @@ def post_process_media_file(file_path: Path):
     timestamps = []
 
     with open(file_path, "rb+") as f:
-        data = f.read()
         pos = 0
         current_time = 0
+
+        moov_offset = -1
+        moov_size = 0
+        moov_changed = False
+        new_moov = b""
+        moov_delta = 0
+
         while pos < len(data) and pos + 8 <= len(data):
             size = int.from_bytes(data[pos : pos + 4], "big")
             box_type = data[pos + 4 : pos + 8]
@@ -52,8 +119,27 @@ def post_process_media_file(file_path: Path):
             if size == 0:
                 break
 
+            if box_type == b"mfra":
+                data = data[:pos]
+                break
+
+            # If size == 1, read actual 64-bit size, used further down
+            actual_size = size
+            if size == 1:
+                actual_size = int.from_bytes(data[pos + 8 : pos + 16], "big")
+
+            if box_type == b"moov":
+                moov_data = data[pos : pos + actual_size]
+                new_moov_bytes, changed = ensure_stsz_in_moov(moov_data)
+                if changed:
+                    moov_changed = True
+                    new_moov = new_moov_bytes
+                    moov_offset = pos
+                    moov_size = actual_size
+                    moov_delta = len(new_moov) - moov_size
+
             if box_type == b"moof":
-                moof_data = data[pos : pos + size]
+                moof_data = data[pos : pos + actual_size]
                 time = current_time
 
                 # Find tfdt inside this moof
@@ -120,14 +206,10 @@ def post_process_media_file(file_path: Path):
 
                     current_time += moof_duration
 
-                offsets.append(pos)
+                offsets.append(pos + moov_delta)
                 timestamps.append(time)
 
-            # Use 64-bit size if needed (unlikely for yt-dlp moofs, but safe for mdat)
-            if size == 1:
-                size = int.from_bytes(data[pos + 8 : pos + 16], "big")
-
-            pos += size
+            pos += actual_size
 
         if not offsets:
             raise ValueError(
@@ -136,12 +218,14 @@ def post_process_media_file(file_path: Path):
 
         mfra_box = _build_mfra(offsets, timestamps)
 
-        # Check if an mfra already exists (unlikely from yt-dlp, but just in case)
-        if data[-4:] == b"mfro":
-            # Overwrite existing mfra
-            mfro_size = int.from_bytes(data[-8:-4], "big")
-            f.seek(len(data) - mfro_size)
+        if moov_changed:
+            f.seek(0)
+            f.write(data[:moov_offset])
+            f.write(new_moov)
+            f.write(memoryview(data)[moov_offset + moov_size :])
+            f.write(mfra_box)
+            f.truncate()
         else:
             f.seek(len(data))
-
-        f.write(mfra_box)
+            f.write(mfra_box)
+            f.truncate()
