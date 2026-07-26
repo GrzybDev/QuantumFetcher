@@ -1,4 +1,3 @@
-import json
 import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -52,13 +51,13 @@ def __get_fragment_offsets(reader, path):
     fragments = []
 
     for _ in range(numOfEntries):
-        _ = int.from_bytes(reader.read(readSize))
+        time = int.from_bytes(reader.read(readSize))
         offset = int.from_bytes(reader.read(readSize))
         _ = int.from_bytes(reader.read(lenSizeOfTrafNum))
         _ = int.from_bytes(reader.read(lenSizeOfTrunNum))
         _ = int.from_bytes(reader.read(lenSizeOfSampleNum))
 
-        fragments.append(offset)
+        fragments.append((time, offset))
 
     return fragments
 
@@ -100,37 +99,97 @@ def __get_text_with_line_breaks(elem):
     return "".join(lines)
 
 
-def extract_subtitles(subtitle_path: Path, episode_num: int, track_name: str):
-    out = {"episode_title": __get_episode_title(episode_num), "segments": []}
+def __parse_ttml_time(time_str: str) -> float:
+    parts = time_str.split(':')
+    if len(parts) == 3:
+        h, m, s = parts
+        sec = int(h) * 3600 + int(m) * 60
+        s_parts = s.split('.')
+        sec += int(s_parts[0])
+        if len(s_parts) > 1:
+            sec += float("0." + s_parts[1])
+        return sec
+    return 0.0
+
+
+def __format_srt_time(total_sec: float) -> str:
+    h = int(total_sec // 3600)
+    m = int((total_sec % 3600) // 60)
+    s = int(total_sec % 60)
+    ms = int(round((total_sec - int(total_sec)) * 1000))
+    if ms == 1000:
+        s += 1
+        ms = 0
+        if s == 60:
+            m += 1
+            s = 0
+            if m == 60:
+                h += 1
+                m = 0
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def extract_subtitles(subtitle_path: Path, episode_num: int, track_name: str, append_ep_title: bool = False):
     segments = []
 
     with open(subtitle_path, "rb") as f:
-        offsets = __get_fragment_offsets(f, subtitle_path)
+        fragments = __get_fragment_offsets(f, subtitle_path)
 
-        if not offsets:
+        if not fragments:
             return
 
-        for offset in offsets:
+        for tfra_time, offset in fragments:
+            frag_time_sec = tfra_time / 10000000.0
             xml_data = __get_fragment_data(f, offset)
 
             root = ET.fromstring(xml_data)
             text_segments = root.findall(".//xmlns:p", namespaces=TTML_NS)
 
             for segment in text_segments:
-                segment_id = int(
-                    segment.attrib["{http://www.w3.org/XML/1998/namespace}id"].lstrip(
-                        "s"
-                    )
-                )
+                begin_time = segment.attrib.get("begin", "00:00:00.000")
+                end_time = segment.attrib.get("end", "00:00:00.000")
+                text = __get_text_with_line_breaks(segment)
 
-                if len(segments) > segment_id:
-                    segments[segment_id] = __get_text_with_line_breaks(segment)
-                else:
-                    segments.append(__get_text_with_line_breaks(segment))
+                abs_begin = frag_time_sec + __parse_ttml_time(begin_time)
+                abs_end = frag_time_sec + __parse_ttml_time(end_time)
 
-    out["segments"] = segments
+                segments.append({
+                    "begin": abs_begin,
+                    "end": abs_end,
+                    "text": text
+                })
+
+    if append_ep_title:
+        ep_title = __get_episode_title(episode_num)
+        if ep_title:
+            segments.append({
+                "begin": 7.5,
+                "end": 9.833,
+                "text": ep_title
+            })
+
+    segments.sort(key=lambda x: x["begin"])
+
+    merged_segments = []
+    for seg in segments:
+        if not seg["text"] or not seg["text"].strip():
+            continue
+        if merged_segments and merged_segments[-1]["text"] == seg["text"]:
+            if seg["begin"] - merged_segments[-1]["end"] < 0.1:
+                merged_segments[-1]["end"] = max(merged_segments[-1]["end"], seg["end"])
+                continue
+        merged_segments.append(seg)
+
+    srt_content = []
+    srt_index = 1
+    for seg in merged_segments:
+        srt_content.append(f"{srt_index}")
+        srt_content.append(f"{__format_srt_time(seg['begin'])} --> {__format_srt_time(seg['end'])}")
+        srt_content.append(seg["text"])
+        srt_content.append("")
+        srt_index += 1
 
     with open(
-        subtitle_path.parent / f"{track_name}_override.json", "w", encoding="utf-8"
+        subtitle_path.parent / f"{track_name}.srt", "w", encoding="utf-8"
     ) as f:
-        json.dump(out, f, indent=4, ensure_ascii=False)
+        f.write("\n".join(srt_content))

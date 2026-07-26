@@ -23,20 +23,21 @@ class Downloader:
             "noprogress": True,
         }
 
-    def _create_hook(self, media_name: str):
+    def _create_hook(self, media_name: str, label: str = "", hide_size_estimation: bool = False):
+        display_name = f"{label} ({media_name})" if label else media_name
         task_id = logger.progress_media.add_task(
-            f"Downloading {media_name}...", total=None, speed="", eta="-:--:--"
+            f"Downloading {display_name}...", total=None, speed="", eta="-:--:--"
         )
 
         def yt_dlp_hook(d):
             if d["status"] == "downloading":
                 downloaded = d.get("downloaded_bytes") or 0
-                total = d.get("total_bytes") or d.get("total_bytes_estimate")
+                total = None if hide_size_estimation else (d.get("total_bytes") or d.get("total_bytes_estimate"))
 
                 speed = d.get("_speed_str", "").strip()
                 
                 eta_val = d.get("eta")
-                if eta_val is not None:
+                if eta_val is not None and not hide_size_estimation:
                     eta_sec = int(eta_val)
                     h, rem = divmod(eta_sec, 3600)
                     m, s = divmod(rem, 60)
@@ -45,16 +46,15 @@ class Downloader:
                     eta = "-:--:--"
 
                 kwargs = {"completed": downloaded, "speed": speed, "eta": eta}
-                if total:
+                if total is not None:
                     kwargs["total"] = total
 
                 cast(Any, logger.progress_media).update(task_id, **kwargs)
             elif d["status"] == "finished":
                 total = d.get("total_bytes") or d.get("downloaded_bytes") or 0
                 cast(Any, logger.progress_media).update(
-                    task_id, completed=total, total=total, speed="", eta="-:--:--"
+                    task_id, description=f"Downloaded {display_name}", completed=total, total=total, speed="", eta="-:--:--"
                 )
-                logger.progress_media.remove_task(task_id)
 
         return yt_dlp_hook
 
@@ -68,7 +68,13 @@ class Downloader:
         audio_format_ids: list[str],
         text_langs: list[str],
         extract_subs: bool,
+        append_ep_title: bool = False,
+        format_labels: dict[str, str] = None,
     ):
+        if format_labels is None:
+            format_labels = {}
+        logger.clear_media_tasks()
+
         episode_dir = episodes_path / episode_id
         episode_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,6 +98,7 @@ class Downloader:
             episode_dir,
             video_format_ids,
             task_stream,
+            format_labels,
         )
         self._download_audio(
             base_name,
@@ -99,6 +106,7 @@ class Downloader:
             episode_dir,
             audio_format_ids,
             task_stream,
+            format_labels,
         )
         self._download_subtitles(
             episode_id,
@@ -108,6 +116,8 @@ class Downloader:
             text_langs,
             extract_subs,
             task_stream,
+            append_ep_title,
+            format_labels,
         )
 
         logger.progress_stream.remove_task(task_stream)
@@ -132,27 +142,29 @@ class Downloader:
         episode_dir,
         video_format_ids,
         task_stream,
+        format_labels,
     ):
         for fmt_id in video_format_ids:
             filename = f"{base_name}_{fmt_id}.ismv"
             out_path = episode_dir / filename
             if out_path.exists():
                 logger.log(
-                    f"Skipping video {filename}, already exists. Post processing media file..."
+                    f"Skipping video {filename}, already exists."
                 )
-                post_process_media_file(out_path)
+                self._post_process(out_path)
                 logger.progress_stream.update(task_stream, advance=1)
                 continue
 
             opts: dict[str, Any] = dict(self.ydl_opts)
             opts["format"] = fmt_id
             opts["outtmpl"] = str(out_path)
-            opts["progress_hooks"] = [self._create_hook(filename)]
+            label = format_labels.get(fmt_id, "video")
+            opts["progress_hooks"] = [self._create_hook(filename, label=label)]
 
             logger.log(f"--- Downloading Video: {filename} ---")
             with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
                 ydl.download([manifest_url])
-            post_process_media_file(out_path)
+            self._post_process(out_path)
 
             logger.progress_stream.update(task_stream, advance=1)
 
@@ -163,6 +175,7 @@ class Downloader:
         episode_dir,
         audio_format_ids,
         task_stream,
+        format_labels,
     ):
         for fmt_id in audio_format_ids:
             lang = fmt_id.split("-")[0] if "-" in fmt_id else fmt_id
@@ -170,21 +183,22 @@ class Downloader:
             out_path = episode_dir / filename
             if out_path.exists():
                 logger.log(
-                    f"Skipping audio {filename}, already exists. Post processing media file..."
+                    f"Skipping audio {filename}, already exists."
                 )
-                post_process_media_file(out_path)
+                self._post_process(out_path)
                 logger.progress_stream.update(task_stream, advance=1)
                 continue
 
             opts: dict[str, Any] = dict(self.ydl_opts)
             opts["format"] = fmt_id
             opts["outtmpl"] = str(out_path)
-            opts["progress_hooks"] = [self._create_hook(filename)]
+            label = format_labels.get(fmt_id, "audio")
+            opts["progress_hooks"] = [self._create_hook(filename, label=label)]
 
             logger.log(f"--- Downloading Audio: {filename} ---")
             with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
                 ydl.download([manifest_url])
-            post_process_media_file(out_path)
+            self._post_process(out_path)
 
             logger.progress_stream.update(task_stream, advance=1)
 
@@ -197,6 +211,8 @@ class Downloader:
         text_langs,
         extract_subs,
         task_stream,
+        append_ep_title,
+        format_labels,
     ):
         if not text_langs:
             return
@@ -208,7 +224,7 @@ class Downloader:
             if out_path.exists():
                 logger.log(f"Skipping subtitles {filename}, already exists.")
                 if extract_subs:
-                    self._extract_subtitles_helper(episode_id, lang, filename, out_path)
+                    self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
                 logger.progress_stream.update(task_stream, advance=1)
                 continue
 
@@ -219,7 +235,8 @@ class Downloader:
             opts["skip_download"] = True
             opts["writesubtitles"] = True
             opts["subtitleslangs"] = [yt_lang]
-            opts["progress_hooks"] = [self._create_hook(filename)]
+            label = format_labels.get(lang, "subtitles")
+            opts["progress_hooks"] = [self._create_hook(filename, label=label, hide_size_estimation=True)]
 
             base_out_path = episode_dir / f"{base_name}_{lang}_cc"
             opts["outtmpl"] = str(base_out_path) + ".%(ext)s"
@@ -230,17 +247,17 @@ class Downloader:
             ytdlp_file = episode_dir / f"{base_name}_{lang}_cc.{yt_lang}.ismt"
             if ytdlp_file.exists():
                 ytdlp_file.rename(out_path)
-                post_process_media_file(out_path)
+                self._post_process(out_path)
             else:
                 logger.log(f"Failed to find downloaded subtitle for {lang} ({yt_lang})")
 
             if extract_subs and out_path.exists():
-                self._extract_subtitles_helper(episode_id, lang, filename, out_path)
+                self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
 
             logger.progress_stream.update(task_stream, advance=1)
 
     def _extract_subtitles_helper(
-        self, episode_id: str, lang: str, filename: str, out_path: Path
+        self, episode_id: str, lang: str, filename: str, out_path: Path, append_ep_title: bool = False
     ):
         logger.log(f"Extracting subtitles for {filename}...")
         try:
@@ -253,4 +270,15 @@ class Downloader:
             ep_num = 0
 
         track_name = f"{lang}_captions"
-        extract_subtitles(out_path, ep_num, track_name)
+        extract_subtitles(out_path, ep_num, track_name, append_ep_title)
+
+    def _post_process(self, out_path: Path):
+        logger.log(f"Post processing {out_path.name}...")
+        task_id = logger.progress_media.add_task(
+            f"Post processing {out_path.name}...", total=None, speed="", eta=""
+        )
+        try:
+            post_process_media_file(out_path)
+        finally:
+            logger.progress_media.remove_task(task_id)
+

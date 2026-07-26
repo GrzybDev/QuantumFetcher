@@ -58,6 +58,10 @@ class Logger:
             self.progress_overall, self.progress_stream, self.progress_media
         )
 
+    def clear_media_tasks(self):
+        for task_id in [task.id for task in self.progress_media.tasks]:
+            self.progress_media.remove_task(task_id)
+
     def print(self, msg, **kwargs):
         self.console.print(msg, **kwargs)
 

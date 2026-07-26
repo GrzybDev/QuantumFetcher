@@ -94,6 +94,9 @@ def download(
     extract_subtitles: Annotated[
         bool, typer.Option(help="Extract subtitles", is_flag=True)
     ] = False,
+    append_episode_title: Annotated[
+        bool, typer.Option(help="Append episode title to extracted subtitles", is_flag=True)
+    ] = False,
 ):
     """Download episodes for local playback"""
     interactive = False
@@ -135,4 +138,5 @@ def download(
         text_bitrates=text_bitrates.split(",") if text_bitrates else None,
         show_formats=show_formats,
         extract_subtitles=extract_subtitles,
+        append_episode_title=append_episode_title,
     )

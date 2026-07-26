@@ -34,6 +34,7 @@ class Flow:
         self.__fetch_text_bitrates: list[str] | None = kwargs.get("text_bitrates")
 
         self.__extract_subtitles = kwargs.get("extract_subtitles", False)
+        self.__append_episode_title = kwargs.get("append_episode_title", False)
         self.__show_formats = kwargs.get("show_formats", False)
         self.__interactive = kwargs.get("interactive", False)
 
@@ -205,11 +206,7 @@ class Flow:
             qualities_list[StreamType.Audio].append((label, format_id))
 
         for lang_name, t_lang, bps in sorted(raw_txt, key=lambda x: (x[0], -x[2])):
-            size_bytes = (bps * avg_duration_sec) / 8
-            size_str = humanize.naturalsize(size_bytes, binary=False)
-            label = (
-                f"{lang_name} (TTML - {t_lang}_captions @ {bps} bps) [~{size_str} / ep]"
-            )
+            label = f"{lang_name} (TTML - {t_lang}_captions)"
             qualities_list[StreamType.Text].append((label, t_lang))
 
         selected_streams = Prompt.select_streams(qualities_list)
@@ -225,6 +222,8 @@ class Flow:
 
         if self.__fetch_text_langs != ["none"]:
             self.__extract_subtitles = Prompt.extract_subtitles()
+            if self.__extract_subtitles:
+                self.__append_episode_title = Prompt.append_episode_title()
 
     def __process_episode(self, episode_id: str, url: str):
         ydl_opts: dict[str, Any] = {
@@ -246,9 +245,32 @@ class Flow:
 
         video_ids, audio_ids, text_langs = self._select_format_ids(info)
 
+        format_labels = {}
+        for f in info.get("formats", []):
+            fid = f.get("format_id")
+            if fid in video_ids:
+                res = f.get("height")
+                format_labels[fid] = f"{res}p video" if res else "video"
+            if fid in audio_ids:
+                lang_code = f.get("language", "unk")
+                lang_val = LanguageMap.get_value(lang_code, lang_code)
+                try:
+                    lang_name = Language(lang_val).name
+                    format_labels[fid] = f"{lang_name} ({lang_code}) audio"
+                except ValueError:
+                    format_labels[fid] = f"{lang_code} audio"
+                
+        for lang in text_langs:
+            lang_val = LanguageMap.get_value(lang, lang)
+            try:
+                lang_name = Language(lang_val).name
+                format_labels[lang] = f"{lang_name} ({lang}) subtitles"
+            except ValueError:
+                format_labels[lang] = f"{lang} subtitles"
+
         logger.log(f"Selected Video Formats: {video_ids}")
         logger.log(f"Selected Audio Formats: {audio_ids}")
-        logger.log(f"Selected Subtitle Langs: {text_langs}")
+        logger.log(f"Selected Subtitle Languages: {text_langs}")
 
         self.__downloader.download(
             video_list=self.__video_list,
@@ -259,6 +281,8 @@ class Flow:
             audio_format_ids=audio_ids,
             text_langs=text_langs,
             extract_subs=self.__extract_subtitles,
+            append_ep_title=self.__append_episode_title,
+            format_labels=format_labels,
         )
 
     def _select_format_ids(self, info: Any) -> tuple[list[str], list[str], list[str]]:

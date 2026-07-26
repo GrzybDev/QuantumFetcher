@@ -108,3 +108,19 @@ class Prompt:
             raise typer.Abort()
 
         return answers["extract_subtitles"]
+
+    @staticmethod
+    def append_episode_title() -> bool:
+        questions = [
+            inquirer.Confirm(
+                "append_episode_title",
+                message="Do you want to append the episode title to the subtitles?",
+                default=True,
+            )
+        ]
+        answers = inquirer.prompt(questions)
+
+        if answers is None or "append_episode_title" not in answers:
+            raise typer.Abort()
+
+        return answers["append_episode_title"]
