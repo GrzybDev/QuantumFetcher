@@ -112,24 +112,31 @@ def post_process_media_file(file_path: Path):
         new_moov = b""
         moov_delta = 0
 
-        while pos < len(data) and pos + 8 <= len(data):
-            size = int.from_bytes(data[pos : pos + 4], "big")
-            box_type = data[pos + 4 : pos + 8]
+        while True:
+            header = f.read(8)
+            if not header or len(header) < 8:
+                break
+
+            size = int.from_bytes(header[:4], "big")
+            box_type = header[4:8]
 
             if size == 0:
                 break
 
             if box_type == b"mfra":
-                data = data[:pos]
                 break
 
-            # If size == 1, read actual 64-bit size, used further down
             actual_size = size
+            header_size = 8
             if size == 1:
-                actual_size = int.from_bytes(data[pos + 8 : pos + 16], "big")
+                extra = f.read(8)
+                actual_size = int.from_bytes(extra, "big")
+                header_size = 16
+
+            box_data_size = actual_size - header_size
 
             if box_type == b"moov":
-                moov_data = data[pos : pos + actual_size]
+                moov_data = header + (extra if size == 1 else b"") + f.read(box_data_size)
                 new_moov_bytes, changed = ensure_stsz_in_moov(moov_data)
                 if changed:
                     moov_changed = True
@@ -137,9 +144,8 @@ def post_process_media_file(file_path: Path):
                     moov_offset = pos
                     moov_size = actual_size
                     moov_delta = len(new_moov) - moov_size
-
-            if box_type == b"moof":
-                moof_data = data[pos : pos + actual_size]
+            elif box_type == b"moof":
+                moof_data = header + (extra if size == 1 else b"") + f.read(box_data_size)
                 time = current_time
 
                 # Find tfdt inside this moof
@@ -208,8 +214,12 @@ def post_process_media_file(file_path: Path):
 
                 offsets.append(pos + moov_delta)
                 timestamps.append(time)
+            else:
+                f.seek(box_data_size, 1)
 
             pos += actual_size
+
+        original_eof = pos
 
         if not offsets:
             raise ValueError(
@@ -219,13 +229,24 @@ def post_process_media_file(file_path: Path):
         mfra_box = _build_mfra(offsets, timestamps)
 
         if moov_changed:
-            f.seek(0)
-            f.write(data[:moov_offset])
+            shift_start = moov_offset + moov_size
+            curr = original_eof
+            chunk_size = 16 * 1024 * 1024  # 16MB chunks
+            while curr > shift_start:
+                read_size = min(chunk_size, curr - shift_start)
+                f.seek(curr - read_size)
+                chunk = f.read(read_size)
+                f.seek(curr - read_size + moov_delta)
+                f.write(chunk)
+                curr -= read_size
+
+            f.seek(moov_offset)
             f.write(new_moov)
-            f.write(memoryview(data)[moov_offset + moov_size :])
+
+            f.seek(original_eof + moov_delta)
             f.write(mfra_box)
             f.truncate()
         else:
-            f.seek(len(data))
+            f.seek(original_eof)
             f.write(mfra_box)
             f.truncate()
