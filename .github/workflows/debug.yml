@@ -27,10 +27,15 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.13
+          python-version: 3.14
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
 
       - name: Install dependencies
-        run: pip install .
+        run: uv sync
 
       - id: repo_name
         name: Get repository name
@@ -38,20 +43,66 @@ jobs:
         with:
           string: ${{ github.event.repository.name }}
 
+      - name: Create Version Info File (Windows)
+        if: matrix.osname == 'Windows'
+        shell: bash
+        run: |
+          cat << 'EOF' > version_info.txt
+          VSVersionInfo(
+            ffi=FixedFileInfo(
+              filevers=(0, 0, 0, 0),
+              prodvers=(0, 0, 0, 0),
+              mask=0x3f,
+              flags=0x0,
+              OS=0x40004,
+              fileType=0x1,
+              subtype=0x0,
+              date=(0, 0)
+            ),
+            kids=[
+              StringFileInfo([
+                StringTable(
+                  '040904B0',
+                  [
+                    StringStruct('CompanyName', '${{ github.repository_owner }}'),
+                    StringStruct('FileDescription', '${{ github.workflow }} of ${{ github.event.repository.name }} for ${{ matrix.osname }} (commit ${{ github.sha }})'),
+                    StringStruct('FileVersion', '0.0.0.0'),
+                    StringStruct('InternalName', '${{ github.event.repository.name }}'),
+                    StringStruct('LegalCopyright', 'Copyright (c) 2026 ${{ github.repository_owner }}'),
+                    StringStruct('OriginalFilename', '${{ github.event.repository.name }}_${{ matrix.osname }}_Debug.exe'),
+                    StringStruct('ProductName', '${{ github.event.repository.name }} (${{ github.workflow }} - ${{ github.sha }})'),
+                    StringStruct('ProductVersion', '0.0.0.0'),
+                  ]
+                )
+              ]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])
+            ]
+          )
+          EOF
+
+      - name: Set PyInstaller Metadata Flags
+        id: pyinstaller-flags
+        shell: bash
+        run: |
+          if [ "${{ matrix.osname }}" = "Windows" ]; then
+            echo "FLAGS=--version-file=version_info.txt" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.osname }}" = "macOS" ]; then
+            echo "FLAGS=--osx-bundle-identifier=com.${{ github.repository_owner }}.${{ steps.repo_name.outputs.lowercase }}" >> $GITHUB_OUTPUT
+          else
+            echo "FLAGS=" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build executable
-        uses: Nuitka/Nuitka-Action@main
-        with:
-          mode: standalone
-          script-name: src/${{ steps.repo_name.outputs.lowercase }}
-          output-dir: build
-          output-file: ${{ github.event.repository.name }}_${{ matrix.osname }}_Debug
-          company-name: ${{ github.repository_owner }}
-          product-name: ${{ github.event.repository.name }} (${{ github.workflow }} - ${{ github.sha }})
-          file-description: ${{ github.workflow }} of ${{ github.event.repository.name }} for ${{ matrix.osname }} (commit ${{ github.sha }})
-          file-version: 0.0.0.0
-          product-version: 0.0.0.0
-          copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"
-          include-package: rich._unicode_data
+        shell: bash
+        run: |
+          uvx --with . pyinstaller \
+            --onefile \
+            -i NONE \
+            --name "${{ steps.repo_name.outputs.lowercase }}" \
+            --distpath "build/${{ steps.repo_name.outputs.lowercase }}.dist" \
+            --copy-metadata readchar \
+            ${{ steps.pyinstaller-flags.outputs.FLAGS }} \
+            "src/${{ steps.repo_name.outputs.lowercase }}/__main__.py"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

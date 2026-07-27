@@ -18,147 +18,213 @@ on:
           - major
 
 jobs:
-    bump_version:
-        name: Bump Version
-        runs-on: ubuntu-latest
-        permissions: write-all
-        outputs:
-          current_version: ${{ steps.get_version.outputs.current_version }}
-          new_version: ${{ steps.bump.outputs.current-version || steps.bump_manual.outputs.current-version }}
-        steps:
-            - uses: actions/checkout@v4
+  bump_version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    permissions: write-all
+    outputs:
+      current_version: ${{ steps.get_version.outputs.current_version }}
+      new_version: ${{ steps.bump.outputs.current-version || steps.bump_manual.outputs.current-version }}
+    steps:
+      - uses: actions/checkout@v4
 
-            - name: Get current version
-              id: get_version
-              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type == 'rebuild' }}
-              run: |
-                pip install bump-my-version
-                echo "current_version=$(bump-my-version show current_version)" >> $GITHUB_OUTPUT
+      - name: Get current version
+        id: get_version
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type == 'rebuild' }}
+        run: |
+          pip install bump-my-version
+          echo "current_version=$(bump-my-version show current_version)" >> $GITHUB_OUTPUT
 
-            - name: Bump version
-              id: bump
-              uses: callowayproject/bump-my-version@master
-              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
-              with:
-                args: ${{ inputs.version_type }}
+      - name: Bump version
+        id: bump
+        uses: callowayproject/bump-my-version@master
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
+        with:
+          args: ${{ inputs.version_type }}
 
-            - name: Bump version (Manual)
-              id: bump_manual
-              uses: callowayproject/bump-my-version@master
-              if: ${{ github.event_name == 'release' }}
-              with:
-                args: --new-version ${{ github.ref_name }}
+      - name: Bump version (Manual)
+        id: bump_manual
+        uses: callowayproject/bump-my-version@master
+        if: ${{ github.event_name == 'release' }}
+        with:
+          args: --new-version ${{ github.ref_name }}
 
-            - name: Install uv
-              uses: astral-sh/setup-uv@v7
-              with:
-                activate-environment: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
 
-            - name: Update lockfile
-              run: uv lock
+      - name: Update lockfile
+        run: uv lock
 
-            - name: Commit version bump
-              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' && steps.bump.outputs.bumped == 'true' }}
-              uses: EndBug/add-and-commit@v9
-              with:
-                default_author: github_actions
-                message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
-                push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
-                tag: "v${{ steps.bump.outputs.current-version }}"
-                tag_push: "--force"
+      - name: Commit version bump
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' && steps.bump.outputs.bumped == 'true' }}
+        uses: EndBug/add-and-commit@v9
+        with:
+          default_author: github_actions
+          message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
+          push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
+          tag: "v${{ steps.bump.outputs.current-version }}"
+          tag_push: "--force"
 
-            - name: Commit version bump (Manual)
-              if: ${{ github.event_name == 'release' && steps.bump.outputs.bumped == 'true' }}
-              uses: EndBug/add-and-commit@v9
-              with:
-                default_author: github_actions
-                message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
-                push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
-                tag: "v${{ steps.bump.outputs.current-version }}"
-                tag_push: "--force"
+      - name: Commit version bump (Manual)
+        if: ${{ github.event_name == 'release' && steps.bump.outputs.bumped == 'true' }}
+        uses: EndBug/add-and-commit@v9
+        with:
+          default_author: github_actions
+          message: "Bump version: ${{ steps.bump.outputs.previous-version }} → ${{ steps.bump.outputs.current-version }}"
+          push: false # Temporarily push manually because of (https://github.com/EndBug/add-and-commit/issues/713)
+          tag: "v${{ steps.bump.outputs.current-version }}"
+          tag_push: "--force"
 
-            - uses: ad-m/github-push-action@master
-              name: Push changes
-              if: ${{ steps.bump.outputs.bumped == 'true' }}
-              with:
-                force: true
-                tags: true
+      - uses: ad-m/github-push-action@master
+        name: Push changes
+        if: ${{ steps.bump.outputs.bumped == 'true' }}
+        with:
+          force: true
+          tags: true
 
-    build:
-        name: Build for ${{ matrix.osname }}
-        permissions: write-all
-        runs-on: ${{ matrix.os }}
-        needs: bump_version
+  build:
+    name: Build for ${{ matrix.osname }}
+    permissions: write-all
+    runs-on: ${{ matrix.os }}
+    needs: bump_version
 
-        strategy:
-            matrix:
-                include:
-                    - os: ubuntu-latest
-                      osname: Linux
-                      osext: ""
-                    - os: macos-latest
-                      osname: macOS
-                      osext: ""
-                    - os: windows-latest
-                      osname: Windows
-                      osext: ".exe"
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            osname: Linux
+            osext: ""
+          - os: macos-latest
+            osname: macOS
+            osext: ""
+          - os: windows-latest
+            osname: Windows
+            osext: ".exe"
 
-        steps:
-            - uses: actions/checkout@v4
-              if: ${{ github.event_name == 'release' || github.event.inputs.version_type == 'rebuild' }}
+    steps:
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name == 'release' || github.event.inputs.version_type == 'rebuild' }}
 
-            - uses: actions/checkout@v4
-              if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
-              with:
-                ref: v${{ needs.bump_version.outputs.new_version }}
+      - uses: actions/checkout@v4
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.version_type != 'rebuild' }}
+        with:
+          ref: v${{ needs.bump_version.outputs.new_version }}
 
-            - name: Setup Python
-              uses: actions/setup-python@v2
-              with:
-                python-version: 3.13
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.14
 
-            - name: Install dependencies
-              run: pip install .
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          activate-environment: true
+      
+      - name: Install dependencies
+        run: uv sync
 
-            - id: repo_name
-              name: Get repository name
-              uses: ASzc/change-string-case-action@v6
-              with:
-                string: ${{ github.event.repository.name }}
+      - id: repo_name
+        name: Get repository name
+        uses: ASzc/change-string-case-action@v6
+        with:
+          string: ${{ github.event.repository.name }}
 
-            - name: Build executable
-              uses: Nuitka/Nuitka-Action@main
-              with:
-                mode: onefile
-                script-name: src/${{ steps.repo_name.outputs.lowercase }}
-                output-dir: build
-                output-file: ${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}
-                company-name: ${{ github.repository_owner }}
-                product-name: ${{ github.event.repository.name }}
-                file-description: ${{ github.event.repository.name }} for ${{ matrix.osname }} (version ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }})
-                file-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
-                product-version: ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
-                copyright: "Copyright (c) 2026 ${{ github.repository_owner }}"
-                include-package: rich._unicode_data
+      - name: Parse Version Tuple (Windows)
+        if: matrix.osname == 'Windows'
+        id: version_tuple
+        shell: bash
+        run: |
+          RAW_VER="${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}"
+          CLEAN_VER=$(echo "$RAW_VER" | sed 's/^v//')
+          IFS='.' read -r -a PARTS <<< "$CLEAN_VER"
+          V0=${PARTS[0]:-0}
+          V1=${PARTS[1]:-0}
+          V2=${PARTS[2]:-0}
+          V3=${PARTS[3]:-0}
+          echo "tuple=($V0, $V1, $V2, $V3)" >> $GITHUB_OUTPUT
+          echo "str=$CLEAN_VER" >> $GITHUB_OUTPUT
 
-            - name: Upload release (manual)
-              if: ${{ github.event_name == 'release' && matrix.os != 'windows-latest' }}
-              uses: softprops/action-gh-release@v2
-              with:
-                files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+      - name: Create Version Info File (Windows)
+        if: matrix.osname == 'Windows'
+        shell: bash
+        run: |
+          cat << 'EOF' > version_info.txt
+          VSVersionInfo(
+            ffi=FixedFileInfo(
+              filevers=${{ steps.version_tuple.outputs.tuple }},
+              prodvers=${{ steps.version_tuple.outputs.tuple }},
+              mask=0x3f,
+              flags=0x0,
+              OS=0x40004,
+              fileType=0x1,
+              subtype=0x0,
+              date=(0, 0)
+            ),
+            kids=[
+              StringFileInfo([
+                StringTable(
+                  '040904B0',
+                  [
+                    StringStruct('CompanyName', '${{ github.repository_owner }}'),
+                    StringStruct('FileDescription', '${{ github.event.repository.name }} for ${{ matrix.osname }} (version ${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }})'),
+                    StringStruct('FileVersion', '${{ steps.version_tuple.outputs.str }}'),
+                    StringStruct('InternalName', '${{ github.event.repository.name }}'),
+                    StringStruct('LegalCopyright', 'Copyright (c) 2026 ${{ github.repository_owner }}'),
+                    StringStruct('OriginalFilename', '${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}'),
+                    StringStruct('ProductName', '${{ github.event.repository.name }}'),
+                    StringStruct('ProductVersion', '${{ steps.version_tuple.outputs.str }}'),
+                  ]
+                )
+              ]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])
+            ]
+          )
+          EOF
 
-            - name: Upload release
-              if: ${{ github.event_name == 'workflow_dispatch' && matrix.os != 'windows-latest' }}
-              uses: softprops/action-gh-release@v2
-              with:
-                files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
-                tag_name: v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
+      - name: Set PyInstaller Metadata Flags
+        id: pyinstaller-flags
+        shell: bash
+        run: |
+          if [ "${{ matrix.osname }}" = "Windows" ]; then
+            echo "FLAGS=--version-file=version_info.txt" >> $GITHUB_OUTPUT
+          elif [ "${{ matrix.osname }}" = "macOS" ]; then
+            echo "FLAGS=--osx-bundle-identifier=com.${{ github.repository_owner }}.${{ steps.repo_name.outputs.lowercase }}" >> $GITHUB_OUTPUT
+          else
+            echo "FLAGS=" >> $GITHUB_OUTPUT
+          fi
 
-            - name: Upload windows release for code signing
-              if: ${{ matrix.os == 'windows-latest' }}
-              env:
-                AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-                AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-                AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
-                AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
-              run: aws s3 cp ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }} s3://builds/unsigned/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+      - name: Build executable
+        shell: bash
+        run: |
+          uvx --with . pyinstaller \
+            --onefile \
+            -i NONE \
+            --name "${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}" \
+            --distpath "build" \
+            --copy-metadata readchar \
+            ${{ steps.pyinstaller-flags.outputs.FLAGS }} \
+            "src/${{ steps.repo_name.outputs.lowercase }}/__main__.py"
+
+      - name: Upload release (manual)
+        if: ${{ github.event_name == 'release' && matrix.os != 'windows-latest' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+
+      - name: Upload release
+        if: ${{ github.event_name == 'workflow_dispatch' && matrix.os != 'windows-latest' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+          tag_name: v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
+
+      - name: Upload windows release for code signing
+        if: ${{ matrix.os == 'windows-latest' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
+          AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
+        run: aws s3 cp ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }} s3://builds/unsigned/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
