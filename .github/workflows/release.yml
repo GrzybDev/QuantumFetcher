@@ -199,10 +199,11 @@ jobs:
         shell: bash
         run: |
           uvx --with . pyinstaller \
+            -y \
             --onefile \
             -i NONE \
             --name "${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}" \
-            --distpath "build" \
+            --distpath "dist" \
             --copy-metadata readchar \
             ${{ steps.pyinstaller-flags.outputs.FLAGS }} \
             "src/${{ steps.repo_name.outputs.lowercase }}/__main__.py"
@@ -211,13 +212,13 @@ jobs:
         if: ${{ github.event_name == 'release' && matrix.os != 'windows-latest' }}
         uses: softprops/action-gh-release@v2
         with:
-          files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+          files: dist/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
 
       - name: Upload release
         if: ${{ github.event_name == 'workflow_dispatch' && matrix.os != 'windows-latest' }}
         uses: softprops/action-gh-release@v2
         with:
-          files: build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+          files: dist/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
           tag_name: v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}
 
       - name: Upload windows release for code signing
@@ -227,4 +228,4 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION }}
           AWS_ENDPOINT_URL: ${{ secrets.AWS_ENDPOINT_URL }}
-        run: aws s3 cp ./build/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }} s3://builds/unsigned/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}
+        run: aws s3 cp ./dist/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }} s3://builds/unsigned/${{ github.event.repository.name }}/v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}/${{ github.event.repository.name }}_v${{ needs.bump_version.outputs.new_version || needs.bump_version.outputs.current_version }}_${{ matrix.osname }}${{ matrix.osext }}

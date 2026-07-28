@@ -96,6 +96,7 @@ jobs:
         shell: bash
         run: |
           uvx --with . pyinstaller \
+            -y \
             --onefile \
             -i NONE \
             --name "${{ steps.repo_name.outputs.lowercase }}" \
