@@ -37,7 +37,7 @@ Features
 --------
 
 - Download all Quantum Break Live Action episodes in selected languages and bitrates for offline in-game playback.
-- Text streams extraction to JSON
+- Text streams extraction to SubRip (.srt)
 - Dump contents of `videoList.rmdj`
 - Patch `videoList.rmdj` to point to custom [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server.
 - Build `videoList.rmdj` from any JSON file.
@@ -101,7 +101,7 @@ You can also build the `videoList.rmdj` file from scratch by providing JSON file
 
 In order to dump contents of `videoList.rmdj` file, you need to provide `--dump-videolist-path` which is where output JSON will be saved, you can also print the contents of that file to console by setting this parameter to `-`.
 
-Running tool with `--extract-subtitles` flag will extract text streams to JSON file usable by [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git)
+Running tool with `--extract-subtitles` flag will extract text streams to SubRip format (.srt) usable by [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git)
 
 In order to be able to use downloaded episodes, you need to install [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git).
 
