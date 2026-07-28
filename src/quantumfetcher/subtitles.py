@@ -94,9 +94,13 @@ def __get_text_with_line_breaks(elem):
         if node.tag.endswith("br"):
             lines.append("\n")
         elif node.text:
-            lines.append(node.text)
+            lines.append(node.text.replace("\r", "").replace("\n", ""))
+            
+        if node is not elem and node.tail:
+            lines.append(node.tail.replace("\r", "").replace("\n", ""))
 
-    return "".join(lines)
+    text = "".join(lines)
+    return "\n".join(line.strip() for line in text.split("\n"))
 
 
 def __parse_ttml_time(time_str: str) -> float:
