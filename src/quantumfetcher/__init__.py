@@ -97,6 +97,12 @@ def download(
     append_episode_title: Annotated[
         bool, typer.Option(help="Append episode title to extracted subtitles", is_flag=True)
     ] = False,
+    retries: Annotated[
+        int,
+        typer.Option(
+            help="Number of retries for stream and fragment downloads",
+        ),
+    ] = 10,
 ):
     """Download episodes for local playback"""
     interactive = False
@@ -139,4 +145,5 @@ def download(
         show_formats=show_formats,
         extract_subtitles=extract_subtitles,
         append_episode_title=append_episode_title,
+        retries=retries,
     )

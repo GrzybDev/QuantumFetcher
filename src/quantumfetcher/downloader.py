@@ -1,3 +1,5 @@
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, cast
 
@@ -12,12 +14,12 @@ from quantumfetcher.subtitles import extract_subtitles
 
 
 class Downloader:
-    def __init__(self):
+    def __init__(self, retries: int = 10):
         self.ydl_opts: dict[str, Any] = {
             "http_headers": {"User-Agent": USER_AGENT},
             "allow_unplayable_formats": True,
-            "retries": 10,
-            "fragment_retries": 10,
+            "retries": retries,
+            "fragment_retries": retries,
             "no_warnings": True,
             "quiet": True,
             "noprogress": True,
@@ -92,33 +94,49 @@ class Downloader:
             f"Downloading {episode_id} streams...", total=total_streams
         )
 
-        self._download_video(
-            base_name,
-            manifest_url,
-            episode_dir,
-            video_format_ids,
-            task_stream,
-            format_labels,
-        )
-        self._download_audio(
-            base_name,
-            manifest_url,
-            episode_dir,
-            audio_format_ids,
-            task_stream,
-            format_labels,
-        )
-        self._download_subtitles(
-            episode_id,
-            base_name,
-            manifest_url,
-            episode_dir,
-            text_langs,
-            extract_subs,
-            task_stream,
-            append_ep_title,
-            format_labels,
-        )
+        def run_videos():
+            for fmt_id in video_format_ids:
+                self._download_video_format(
+                    base_name, manifest_url, episode_dir, fmt_id, task_stream, format_labels
+                )
+
+        def run_audios():
+            for fmt_id in audio_format_ids:
+                self._download_audio_format(
+                    base_name, manifest_url, episode_dir, fmt_id, task_stream, format_labels
+                )
+
+        def run_texts():
+            for lang in text_langs:
+                self._download_subtitle_format(
+                    episode_id,
+                    base_name,
+                    manifest_url,
+                    episode_dir,
+                    lang,
+                    extract_subs,
+                    task_stream,
+                    append_ep_title,
+                    format_labels,
+                )
+
+        futures = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            if video_format_ids:
+                futures.append(executor.submit(run_videos))
+            if audio_format_ids:
+                futures.append(executor.submit(run_audios))
+            if text_langs:
+                futures.append(executor.submit(run_texts))
+
+            try:
+                for future in as_completed(futures):
+                    future.result()
+            except KeyboardInterrupt:
+                logger.error("\nDownload interrupted by user. Exiting immediately...")
+                for future in futures:
+                    future.cancel()
+                os._exit(1)
 
         logger.progress_stream.remove_task(task_stream)
 
@@ -135,126 +153,120 @@ class Downloader:
         except Exception as e:
             logger.error(f"Failed to generate manifests: {e}")
 
-    def _download_video(
+    def _download_video_format(
         self,
         base_name,
         manifest_url,
         episode_dir,
-        video_format_ids,
+        fmt_id,
         task_stream,
         format_labels,
     ):
-        for fmt_id in video_format_ids:
-            filename = f"{base_name}_{fmt_id}.ismv"
-            out_path = episode_dir / filename
-            if out_path.exists():
-                logger.log(
-                    f"Skipping video {filename}, already exists."
-                )
-                self._post_process(out_path)
-                logger.progress_stream.update(task_stream, advance=1)
-                continue
-
-            opts: dict[str, Any] = dict(self.ydl_opts)
-            opts["format"] = fmt_id
-            opts["outtmpl"] = str(out_path)
-            label = format_labels.get(fmt_id, "video")
-            opts["progress_hooks"] = [self._create_hook(filename, label=label)]
-
-            logger.log(f"--- Downloading Video: {filename} ---")
-            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
-                ydl.download([manifest_url])
+        filename = f"{base_name}_{fmt_id}.ismv"
+        out_path = episode_dir / filename
+        if out_path.exists():
+            logger.log(
+                f"Skipping video {filename}, already exists."
+            )
             self._post_process(out_path)
-
             logger.progress_stream.update(task_stream, advance=1)
+            return
 
-    def _download_audio(
+        opts: dict[str, Any] = dict(self.ydl_opts)
+        opts["format"] = fmt_id
+        opts["outtmpl"] = str(out_path)
+        label = format_labels.get(fmt_id, "video")
+        opts["progress_hooks"] = [self._create_hook(filename, label=label)]
+
+        logger.log(f"--- Downloading Video: {filename} ---")
+        with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+            ydl.download([manifest_url])
+        self._post_process(out_path)
+
+        logger.progress_stream.update(task_stream, advance=1)
+
+    def _download_audio_format(
         self,
         base_name,
         manifest_url,
         episode_dir,
-        audio_format_ids,
+        fmt_id,
         task_stream,
         format_labels,
     ):
-        for fmt_id in audio_format_ids:
-            lang = fmt_id.split("-")[0] if "-" in fmt_id else fmt_id
-            filename = f"{base_name}_{lang}.isma"
-            out_path = episode_dir / filename
-            if out_path.exists():
-                logger.log(
-                    f"Skipping audio {filename}, already exists."
-                )
-                self._post_process(out_path)
-                logger.progress_stream.update(task_stream, advance=1)
-                continue
-
-            opts: dict[str, Any] = dict(self.ydl_opts)
-            opts["format"] = fmt_id
-            opts["outtmpl"] = str(out_path)
-            label = format_labels.get(fmt_id, "audio")
-            opts["progress_hooks"] = [self._create_hook(filename, label=label)]
-
-            logger.log(f"--- Downloading Audio: {filename} ---")
-            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
-                ydl.download([manifest_url])
+        lang = fmt_id.split("-")[0] if "-" in fmt_id else fmt_id
+        filename = f"{base_name}_{lang}.isma"
+        out_path = episode_dir / filename
+        if out_path.exists():
+            logger.log(
+                f"Skipping audio {filename}, already exists."
+            )
             self._post_process(out_path)
-
             logger.progress_stream.update(task_stream, advance=1)
+            return
 
-    def _download_subtitles(
+        opts: dict[str, Any] = dict(self.ydl_opts)
+        opts["format"] = fmt_id
+        opts["outtmpl"] = str(out_path)
+        label = format_labels.get(fmt_id, "audio")
+        opts["progress_hooks"] = [self._create_hook(filename, label=label)]
+
+        logger.log(f"--- Downloading Audio: {filename} ---")
+        with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+            ydl.download([manifest_url])
+        self._post_process(out_path)
+
+        logger.progress_stream.update(task_stream, advance=1)
+
+    def _download_subtitle_format(
         self,
         episode_id,
         base_name,
         manifest_url,
         episode_dir,
-        text_langs,
+        lang,
         extract_subs,
         task_stream,
         append_ep_title,
         format_labels,
     ):
-        if not text_langs:
+        filename = f"{base_name}_{lang}_cc.ismt"
+        out_path = episode_dir / filename
+
+        if out_path.exists():
+            logger.log(f"Skipping subtitles {filename}, already exists.")
+            if extract_subs:
+                self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
+            logger.progress_stream.update(task_stream, advance=1)
             return
 
-        for lang in text_langs:
-            filename = f"{base_name}_{lang}_cc.ismt"
-            out_path = episode_dir / filename
+        yt_lang = LanguageMap.get_value(lang, lang) or lang
 
-            if out_path.exists():
-                logger.log(f"Skipping subtitles {filename}, already exists.")
-                if extract_subs:
-                    self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
-                logger.progress_stream.update(task_stream, advance=1)
-                continue
+        logger.log(f"--- Downloading Subtitles: {filename}...")
+        opts: dict[str, Any] = dict(self.ydl_opts)
+        opts["skip_download"] = True
+        opts["writesubtitles"] = True
+        opts["subtitleslangs"] = [yt_lang]
+        label = format_labels.get(lang, "subtitles")
+        opts["progress_hooks"] = [self._create_hook(filename, label=label, hide_size_estimation=True)]
 
-            yt_lang = LanguageMap.get_value(lang, lang) or lang
+        base_out_path = episode_dir / f"{base_name}_{lang}_cc"
+        opts["outtmpl"] = str(base_out_path) + ".%(ext)s"
 
-            logger.log(f"--- Downloading Subtitles: {filename}...")
-            opts: dict[str, Any] = dict(self.ydl_opts)
-            opts["skip_download"] = True
-            opts["writesubtitles"] = True
-            opts["subtitleslangs"] = [yt_lang]
-            label = format_labels.get(lang, "subtitles")
-            opts["progress_hooks"] = [self._create_hook(filename, label=label, hide_size_estimation=True)]
+        with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
+            ydl.download([manifest_url])
 
-            base_out_path = episode_dir / f"{base_name}_{lang}_cc"
-            opts["outtmpl"] = str(base_out_path) + ".%(ext)s"
+        ytdlp_file = episode_dir / f"{base_name}_{lang}_cc.{yt_lang}.ismt"
+        if ytdlp_file.exists():
+            ytdlp_file.rename(out_path)
+            self._post_process(out_path)
+        else:
+            logger.log(f"Failed to find downloaded subtitle for {lang} ({yt_lang})")
 
-            with yt_dlp.YoutubeDL(cast(Any, opts)) as ydl:
-                ydl.download([manifest_url])
+        if extract_subs and out_path.exists():
+            self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
 
-            ytdlp_file = episode_dir / f"{base_name}_{lang}_cc.{yt_lang}.ismt"
-            if ytdlp_file.exists():
-                ytdlp_file.rename(out_path)
-                self._post_process(out_path)
-            else:
-                logger.log(f"Failed to find downloaded subtitle for {lang} ({yt_lang})")
-
-            if extract_subs and out_path.exists():
-                self._extract_subtitles_helper(episode_id, lang, filename, out_path, append_ep_title)
-
-            logger.progress_stream.update(task_stream, advance=1)
+        logger.progress_stream.update(task_stream, advance=1)
 
     def _extract_subtitles_helper(
         self, episode_id: str, lang: str, filename: str, out_path: Path, append_ep_title: bool = False

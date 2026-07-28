@@ -18,7 +18,9 @@ from quantumfetcher.video_list import VideoList
 
 class Flow:
     def __init__(self, video_list: VideoList, **kwargs) -> None:
-        self.__downloader = Downloader()
+        self.__downloader = Downloader(
+            retries=kwargs.get("retries", 10),
+        )
         self.__video_list = video_list
 
         self.__episodes_to_fetch: list[str] | None = kwargs.get("episodes")
