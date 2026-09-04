@@ -59,21 +59,28 @@ Usage
 -----
 
 ```sh
-quantumstreamer --help
+quantumfetcher --help
 ```
 
-You can run this tool in interactive mode or non-interactive mode.
+Quantum Fetcher is split into two command groups: `download` (fetching episodes) and `videolist` (managing the `videoList.rmdj` manifest).
+
+### Downloading episodes
+
+```sh
+quantumfetcher download [PATH] [OPTIONS]
+```
+
+`PATH` is the root game folder. You can run this command in interactive mode or non-interactive mode.
 
 By default, if no filters are provided then english audio and subtitles will be downloaded with highest quality video stream.
 
-In interactive mode, you will be asked which episodes you want to download, in which quality, languages etc. to run this tool in interactive mode use `--interactive` flag
+The tool automatically falls back to interactive mode (prompting for the game folder, episodes, and stream quality/languages) whenever `PATH` or a filter option below is omitted — there is no separate flag to request it.
 
-Both interactive mode and non-interactive mode supports these two optional parameters:
-
-| Parameter         | Description                          | Default value       |
-|------------------:|:------------------------------------:|:--------------------|
-| --videolist-path  | Path to videoList.rmdj file          | data/videoList.rmdj |
-| --episodes-path   | Path to where episodes will be saved | videos/episodes     |
+| Parameter          | Description                                                        | Default value                    |
+|--------------------:|:-------------------------------------------------------------------|:----------------------------------|
+| --videolist-path    | Path to videoList.rmdj file                                        | data/videoList.rmdj inside PATH   |
+| --episodes-path     | Path to where episodes will be saved                                | videos/episodes inside PATH       |
+| --retries           | Number of retries for stream and fragment downloads                 | 10                                |
 
 Supported filters are provided below:
 
@@ -89,19 +96,35 @@ Supported filters are provided below:
 
 *Note: All filters support `all` value (Example: `--audio-languages all` will download audio tracks in all languages)*
 
-You can view available formats (bitrates, languages etc.) by running Quantum Fetcher with `--show-formats` flag.
+You can view available formats (bitrates, languages etc.) by running the `download` command with the `--show-formats` flag.
 
-This tool also can patch original `videoList.rmdj` file to make game point to [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server.
+Running the `download` command with the `--extract-subtitles` flag will extract text streams to SubRip format (.srt) usable by [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git). Add `--append-episode-title` to also append the episode title to the extracted subtitles.
 
-To patch `videoList.rmdj` run this tool with `--patch-videolist` flag, by default, it will update videoList.rmdj to point to `127.0.0.1:10000`.
+### Managing videoList.rmdj
 
-You can change the default to any other host that is compatible with [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git), to do that just set `--patch-videolist-server`.
+This tool can also patch the original `videoList.rmdj` file to make the game point to a [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server:
 
-You can also build the `videoList.rmdj` file from scratch by providing JSON file path via `--build-videolist-path` parameter, you can specify the output path via `--videolist-path` parameter.
+```sh
+quantumfetcher videolist patch [PATH]
+```
 
-In order to dump contents of `videoList.rmdj` file, you need to provide `--dump-videolist-path` which is where output JSON will be saved, you can also print the contents of that file to console by setting this parameter to `-`.
+By default, it will update `videoList.rmdj` to point to `127.0.0.1:10000`. You can change the default to any other host that is compatible with [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) via `--server`/`-s`.
 
-Running tool with `--extract-subtitles` flag will extract text streams to SubRip format (.srt) usable by [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git)
+You can also build the `videoList.rmdj` file from scratch from a JSON file:
+
+```sh
+quantumfetcher videolist build INPUT_JSON --path PATH
+```
+
+You can specify the output path for the built file via `--videolist-path`.
+
+In order to dump the contents of a `videoList.rmdj` file, use:
+
+```sh
+quantumfetcher videolist dump [PATH] --output OUTPUT_JSON
+```
+
+You can also print the contents to console by setting `--output`/`-o` to `-`.
 
 In order to be able to use downloaded episodes, you need to install [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git).
 
