@@ -1,3 +1,10 @@
+import os
+
+# inquirer's blessed backend warns on any terminfo capability it doesn't
+# recognize (e.g. "ssupm" on some Windows terminals); this is cosmetic and
+# unrelated to QuantumFetcher, so silence it before blessed is imported.
+os.environ.setdefault("BLESSED_NOWARN_UNKNOWN_CAPS", "1")
+
 from pathlib import Path
 from typing import Annotated
 
