@@ -103,7 +103,15 @@ class EpisodeDownloader:
         folder.path.mkdir(parents=True, exist_ok=True)
         for track in tracks:
             self._download_track(f"{episode.id} {track.label}", track, folder.track(track))
-        self._write_manifests(episode, tracks, folder)
+        # The manifests offer every track in the folder, also those of earlier downloads, and
+        # replace the server's, so they need something to play.
+        present = [track for track in episode.manifest.tracks if folder.track(track).exists()]
+        if {StreamType.VIDEO, StreamType.AUDIO} <= {track.type for track in present}:
+            self._write_manifests(episode, present, folder)
+        else:
+            log.info(
+                "Leaving %s to stream, as playing it offline needs video and audio", episode.id
+            )
         if self._extract_subtitles:
             for track in tracks:
                 if track.type is StreamType.TEXT:
@@ -123,6 +131,17 @@ class EpisodeDownloader:
     def _write_manifests(
         self, episode: Episode, tracks: Sequence[Track], folder: EpisodeFolder
     ) -> None:
+        # QuantumStreamer plays an episode from one server manifest, such as one an older version
+        # of this tool wrote under another name.
+        for other in folder.path.glob("*.ism"):
+            if other != folder.server_manifest:
+                other.replace(other.with_name(f"{other.name}.old"))
+                log.warning(
+                    "Renamed %s to %s.old, so QuantumStreamer does not play %s from it instead",
+                    other.name,
+                    other.name,
+                    episode.id,
+                )
         folder.client_manifest.write_bytes(episode.manifest.local_copy(tracks))
         files = [(track, folder.track(track).name) for track in tracks]
         folder.server_manifest.write_bytes(server_manifest(folder.client_manifest.name, files))

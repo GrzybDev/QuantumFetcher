@@ -81,6 +81,25 @@ class EpisodeDownloaderTests(unittest.TestCase):
         )
         self.assertEqual(served_locally(self.folder), (9, 0))
 
+    def test_manifests_offer_the_tracks_of_earlier_downloads(self):
+        self.download(self.tracks("enus_captions"))
+        self.download(self.tracks("500000", "esmx"))
+        self.assertEqual(served_locally(self.folder), (9, 0))
+
+    def test_moves_aside_server_manifests_quantumstreamer_could_use_instead(self):
+        self.folder.mkdir()
+        (self.folder / "QUANTUM_BREAK_Ep_1A.ism").write_text("old", encoding="utf-8")
+        with self.assertLogs("quantumfetcher.episodes", "WARNING"):
+            self.download(self.tracks("500000", "esmx"))
+        self.assertEqual(list(self.folder.glob("*.ism")), [self.folder / "J1A.ism"])
+        self.assertTrue((self.folder / "QUANTUM_BREAK_Ep_1A.ism.old").exists())
+
+    def test_leaves_episodes_without_video_and_audio_to_stream(self):
+        self.download(self.tracks("enus_captions", "esmx"))
+        self.assertEqual(
+            files(self.folder), ["J1A_enus_captions_256000.ismt", "J1A_esmx_256000.isma"]
+        )
+
     def test_keeps_tracks_already_downloaded(self):
         self.folder.mkdir()
         (self.folder / "J1A_esmx_256000.isma").write_bytes(b"kept")

@@ -118,6 +118,10 @@ Each episode is saved in its own folder (such as `videos/episodes/J1A`), where Q
 
 Tracks are downloaded to `.part` files first, so an interrupted download carries on where it stopped when run again, and finished tracks are kept.
 
+The manifests offer every track in the episode folder, also the ones of earlier downloads, so you can add a language later. They are only written once the folder holds both a video and an audio track, since QuantumStreamer plays an episode from its local manifests instead of the server's. That way you can download just the captions of episodes to translate them while still streaming the episodes themselves.
+
+QuantumStreamer plays an episode from a single server manifest, so any other `.ism` file in the folder, such as one written by an older version of this tool under another name, is renamed to `.ism.old`. Older versions also named the tracks differently, so their tracks are downloaded again.
+
 ### Managing videoList.rmdj
 
 This tool can also patch the original `videoList.rmdj` file to make the game point to a [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server:
