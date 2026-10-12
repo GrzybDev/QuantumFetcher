@@ -116,7 +116,7 @@ Each episode is saved in its own folder (such as `videos/episodes/J1A`), where Q
 | `J1A.ism`, `J1A.ismc`         | the server and client manifests QuantumStreamer serves the tracks with      |
 | `<stream>.srt`                | subtitles QuantumStreamer shows instead of that caption track's own         |
 
-Tracks are downloaded to `.part` files first, so an interrupted download carries on where it stopped when run again, and finished tracks are kept.
+Tracks are downloaded to `.part` files first, so an interrupted download carries on where it stopped when run again, and finished tracks are kept. Existing `.srt` files are never overwritten, as they may hold edited or translated captions; delete one to save it again.
 
 The manifests offer every track in the episode folder, also the ones of earlier downloads, so you can add a language later. They are only written once the folder holds both a video and an audio track, since QuantumStreamer plays an episode from its local manifests instead of the server's. That way you can download just the captions of episodes to translate them while still streaming the episodes themselves.
 

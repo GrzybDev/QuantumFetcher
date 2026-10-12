@@ -149,6 +149,9 @@ class EpisodeDownloader:
 
     def _save_subtitles(self, episode: Episode, track: Track, folder: EpisodeFolder) -> None:
         path = folder.subtitles(track)
+        if path.exists():
+            log.info("Keeping %s, as it may hold edited captions", path.name)
+            return
         cues = subtitles.read_cues(folder.track(track), track.timescale)
         if self._episode_title and (title := subtitles.episode_title(episode.id)):
             cues.append(title)

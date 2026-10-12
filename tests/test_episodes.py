@@ -117,6 +117,12 @@ class EpisodeDownloaderTests(unittest.TestCase):
             b"4\r\n00:00:07,500 --> 00:00:09,833\r\nEPISODE 1: Monarch Solutions\r\n",
         )
 
+    def test_keeps_subtitles_that_may_be_edited(self):
+        self.folder.mkdir()
+        (self.folder / "enus_captions.srt").write_text("edited", encoding="utf-8")
+        self.download(self.tracks("enus_captions"), extract_subtitles=True)
+        self.assertEqual((self.folder / "enus_captions.srt").read_text(encoding="utf-8"), "edited")
+
     def test_reports_the_episodes_that_fail_and_carries_on(self):
         broken = Episode("J1B", self.episode.manifest)
         del self.client.responses[self.tracks("2000000")[0].fragment_url(0)]
