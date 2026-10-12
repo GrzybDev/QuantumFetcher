@@ -44,4 +44,4 @@ jobs:
     with:
       version: ${{ needs.version.outputs.version }}
       ref: ${{ needs.version.outputs.ref }}
-      builder: pyinstaller
+      include-package: rich._unicode_data

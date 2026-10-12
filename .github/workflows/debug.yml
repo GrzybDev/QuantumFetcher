@@ -12,4 +12,4 @@ jobs:
   build:
     uses: GrzybDev/actions/.github/workflows/python-app.yml@v1
     with:
-      builder: pyinstaller
+      include-package: rich._unicode_data
