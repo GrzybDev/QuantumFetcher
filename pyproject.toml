@@ -27,3 +27,15 @@ package = true
 
 [project.scripts]
 quantumfetcher = "quantumfetcher.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]

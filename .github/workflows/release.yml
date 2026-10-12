@@ -18,8 +18,14 @@ on:
           - major
 
 jobs:
+  checks:
+    permissions:
+      contents: read
+    uses: GrzybDev/actions/.github/workflows/python-checks.yml@v1
+
   version:
     name: Bump Version
+    needs: checks
     runs-on: ubuntu-latest
     permissions:
       contents: write
