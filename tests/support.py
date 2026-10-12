@@ -1,4 +1,7 @@
 import struct
+from collections.abc import Mapping
+
+from quantumfetcher.errors import FetchError
 
 MANIFEST_URL = "http://cdn.test/quantum/J1A.ism/manifest?tkn=secret"
 CHUNK = 20_000_000
@@ -66,3 +69,46 @@ def fragment(payload: bytes, track_id: int = 1) -> bytes:
     tfhd = box(b"tfhd", struct.pack(">II", 0, track_id))
     moof = box(b"moof", box(b"mfhd", struct.pack(">II", 0, 1)), box(b"traf", tfhd))
     return moof + box(b"mdat", payload)
+
+
+def ttml(*paragraphs: str) -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><tt xml:lang="eng" '
+        f'xmlns="http://www.w3.org/ns/ttml"><body><div>{"".join(paragraphs)}</div></body></tt>'
+    ).encode()
+
+
+def caption(begin: str, end: str, text: str) -> str:
+    return f'<p begin="{begin}" end="{end}" region="speaker"><span>{text}</span></p>'
+
+
+def episode_responses(chunks: int = 3) -> dict[str, bytes]:
+    """The manifest and every fragment of an episode: media fragments hold their own URL and
+    caption fragments a line naming their stream and number."""
+    responses = {MANIFEST_URL: client_manifest(chunks)}
+    starts = [number * CHUNK for number in range(chunks)]
+    tracks = [("video", bitrate) for bitrate in VIDEO] + [(name, 256000) for name in AUDIO]
+    for name, bitrate in tracks:
+        for start in starts:
+            url = fragment_url(name, bitrate, start)
+            responses[url] = fragment(url.encode())
+    for name in TEXT:
+        for number, start in enumerate(starts):
+            line = caption("00:00:00.500", "00:00:01.500", f"{name} {number}")
+            responses[fragment_url(name, 256000, start)] = fragment(ttml(line))
+    return responses
+
+
+class FakeClient:
+    """Stands in for HttpClient, answering from URLs mapped to bodies or errors."""
+
+    def __init__(self, responses: Mapping[str, bytes | Exception]) -> None:
+        self.responses = dict(responses)
+        self.requests: list[str] = []
+
+    def get(self, url: str) -> bytes:
+        self.requests.append(url)
+        response = self.responses.get(url, FetchError(f"404 Client Error: Not Found for {url}"))
+        if isinstance(response, Exception):
+            raise response
+        return response
