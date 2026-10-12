@@ -13,4 +13,3 @@ jobs:
     uses: GrzybDev/actions/.github/workflows/python-app.yml@v1
     with:
       builder: pyinstaller
-      copy-metadata: readchar
