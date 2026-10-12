@@ -250,12 +250,16 @@ def build(
     game_dir: GameDir = None,
     videolist_path: Annotated[
         Path | None,
-        typer.Option(dir_okay=False, help="File to save the list to instead of the game's list."),
+        typer.Option(
+            dir_okay=False,
+            help="File to save the list to instead of the game's list, or its original once "
+            "patched, which is the one the episodes are read from.",
+        ),
     ] = None,
 ) -> None:
     try:
         videos = videolist.read_json(input_json)
-        path = videolist_path or _game(game_dir, _interactive()).videolist
+        path = videolist_path or videolist.unpatched(_game(game_dir, _interactive()).videolist)
         videolist.save(path, videos)
     except (FetchError, OSError) as error:
         _fail(error)

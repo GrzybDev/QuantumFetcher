@@ -132,7 +132,7 @@ quantumfetcher videolist patch [GAME_DIR] [--server HOST:PORT]
 
 By default, it will update `videoList.rmdj` to point to `127.0.0.1:10000`. The original file is kept as `videoList_original.rmdj`, which is also where QuantumStreamer looks for it.
 
-You can also build the `videoList.rmdj` file from a JSON object mapping episode IDs to manifest URLs:
+You can also build the `videoList.rmdj` file from a JSON object mapping episode IDs to manifest URLs. Once the list is patched, the built list is saved as `videoList_original.rmdj`, which is the one the episodes are read from:
 
 ```sh
 quantumfetcher videolist build INPUT_JSON [GAME_DIR] [--videolist-path OUTPUT]

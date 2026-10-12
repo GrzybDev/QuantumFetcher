@@ -68,7 +68,7 @@ class VideoListTests(unittest.TestCase):
 
     def test_read_json_reads_what_windows_tools_write(self):
         source = self.path.with_name("list.json")
-        for encoding in ("utf-8",):
+        for encoding in ("utf-8", "utf-8-sig", "utf-16"):
             with self.subTest(encoding=encoding):
                 source.write_text('{"J1A": "http://a.test/manifest"}', encoding=encoding)
                 self.assertEqual(videolist.read_json(source), {"J1A": "http://a.test/manifest"})

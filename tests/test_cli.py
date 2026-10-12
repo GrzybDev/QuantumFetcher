@@ -139,8 +139,8 @@ class CliTests(unittest.TestCase):
     def test_videolist_build_saves_the_list_episodes_are_read_from(self):
         built = {"J3A": "http://cdn.test/J3A.ism/manifest"}
         source = self.game / "list.json"
-        source.write_text(json.dumps(built), encoding="utf-8")
-        for patched in (False,):
+        source.write_text(json.dumps(built), encoding="utf-16")
+        for patched in (False, True):
             with self.subTest(patched=patched):
                 if patched:
                     self.run_cli("videolist", "patch", self.game)

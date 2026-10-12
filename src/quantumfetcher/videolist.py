@@ -42,7 +42,8 @@ def save(path: Path, videos: Mapping[str, str]) -> None:
 
 def read_json(path: Path) -> dict[str, str]:
     try:
-        return validate(json.loads(path.read_text(encoding="utf-8")))
+        # From bytes, json also reads the UTF-16 and BOM-marked files Windows tools write.
+        return validate(json.loads(path.read_bytes()))
     except (ValueError, FetchError) as error:
         raise FetchError(f"{path}: {error}") from error
 
