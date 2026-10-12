@@ -8,6 +8,7 @@ from pathlib import Path
 from rich.filesize import decimal
 from rich.progress import Progress
 
+from quantumfetcher import subtitles
 from quantumfetcher.concurrency import completed_in_order
 from quantumfetcher.download import TrackDownloader
 from quantumfetcher.errors import FetchError
@@ -48,6 +49,9 @@ class EpisodeFolder:
         name = f"{self.episode_id}_{track.name}_{track.bitrate}{_EXTENSIONS[track.type]}"
         return self.path / name
 
+    def subtitles(self, track: Track) -> Path:
+        return self.path / f"{track.name}.srt"
+
 
 def fetch_episodes(
     client: HttpClient, videos: Mapping[str, str], workers: int, progress: Progress
@@ -72,10 +76,15 @@ class EpisodeDownloader:
         downloader: TrackDownloader,
         root: Path,
         progress: Progress,
+        *,
+        extract_subtitles: bool = False,
+        episode_title: bool = False,
     ) -> None:
         self._downloader = downloader
         self._root = root
         self._progress = progress
+        self._extract_subtitles = extract_subtitles
+        self._episode_title = episode_title
 
     def download_all(self, plan: Sequence[tuple[Episode, Sequence[Track]]]) -> list[str]:
         """Download each episode's tracks, returning the IDs of the episodes that failed."""
@@ -103,6 +112,10 @@ class EpisodeDownloader:
             log.info(
                 "Leaving %s to stream, as playing it offline needs video and audio", episode.id
             )
+        if self._extract_subtitles:
+            for track in tracks:
+                if track.type is StreamType.TEXT:
+                    self._save_subtitles(episode, track, folder)
 
     def _download_track(self, label: str, track: Track, path: Path) -> None:
         if path.exists():
@@ -133,6 +146,17 @@ class EpisodeDownloader:
         files = [(track, folder.track(track).name) for track in tracks]
         folder.server_manifest.write_bytes(server_manifest(folder.client_manifest.name, files))
         log.info("Wrote %s and %s", folder.server_manifest.name, folder.client_manifest.name)
+
+    def _save_subtitles(self, episode: Episode, track: Track, folder: EpisodeFolder) -> None:
+        path = folder.subtitles(track)
+        if path.exists():
+            log.info("Keeping %s, as it may hold edited captions", path.name)
+            return
+        cues = subtitles.read_cues(folder.track(track), track.timescale)
+        if self._episode_title and (title := subtitles.episode_title(episode.id)):
+            cues.append(title)
+        path.write_text(subtitles.to_srt(cues), encoding="utf-8", newline="\r\n")
+        log.info("Saved %s", path.name)
 
 
 def _fetch_manifest(client: HttpClient, url: str) -> ClientManifest:

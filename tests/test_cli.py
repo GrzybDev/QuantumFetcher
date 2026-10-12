@@ -62,6 +62,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertTrue((self.episodes / "J1A" / "J1A_esmx_256000.isma").exists())
 
+    def test_extracts_subtitles_when_asked(self):
+        result = self.run_cli(
+            "download", self.game, "-e", "J1A", "--video", "none", "--audio", "none",
+            "--extract-subtitles", "--append-episode-title",
+        )  # fmt: skip
+        self.assertEqual(result.exit_code, 0, result.output)
+        srt = (self.episodes / "J1A" / "enus_captions.srt").read_text(encoding="utf-8")
+        self.assertIn("EPISODE 1: Monarch Solutions", srt)
+
     def test_skips_episodes_whose_manifest_is_unavailable(self):
         result = self.run_cli("download", self.game, "-e", "all", "--video", "500000", "-y")
         self.assertEqual(result.exit_code, 0, result.output)

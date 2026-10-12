@@ -113,6 +113,17 @@ def download(
             help="Comma-separated caption selectors, which pick like audio ones.",
         ),
     ] = None,
+    extract_subtitles: Annotated[
+        bool | None,
+        typer.Option(
+            show_default=False,
+            help="Save the captions as SubRip files, which QuantumStreamer shows instead.",
+        ),
+    ] = None,
+    append_episode_title: Annotated[
+        bool | None,
+        typer.Option(show_default=False, help="Add the episode title to the saved subtitles."),
+    ] = None,
     retries: Retries = 10,
     workers: Workers = 8,
     yes: Annotated[
@@ -139,12 +150,27 @@ def download(
             plan = [(episode, _tracks(episode, chosen)) for episode in loaded]
             if not any(tracks for _, tracks in plan):
                 raise FetchError("The selectors pick no tracks to download")
+            with_text = any(track.type is StreamType.TEXT for _, tracks in plan for track in tracks)
+            extract = _flag(
+                extract_subtitles,
+                interactive and with_text,
+                "Save the captions as SubRip files that QuantumStreamer shows instead?",
+                default=False,
+            )
+            title = _flag(
+                append_episode_title,
+                interactive and extract,
+                "Add the episode title to the saved subtitles?",
+                default=True,
+            )
             _log_plan(plan)
             with _transfer_progress() as progress:
                 failed = EpisodeDownloader(
                     TrackDownloader(client, workers),
                     episodes_path,
                     progress,
+                    extract_subtitles=extract,
+                    episode_title=title,
                 ).download_all(plan)
     except (FetchError, OSError) as error:
         _fail(error)
@@ -325,6 +351,12 @@ def _tracks(episode: Episode, chosen: Mapping[StreamType, Sequence[str]]) -> lis
 
 def _of_type(episode: Episode, kind: StreamType) -> list[Track]:
     return [track for track in episode.manifest.tracks if track.type is kind]
+
+
+def _flag(given: bool | None, ask: bool, question: str, *, default: bool) -> bool:
+    if given is not None:
+        return given
+    return prompts.confirm(question, default) if ask else False
 
 
 def _log_plan(plan: Sequence[tuple[Episode, Sequence[Track]]]) -> None:

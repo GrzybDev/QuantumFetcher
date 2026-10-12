@@ -62,9 +62,9 @@ class EpisodeDownloaderTests(unittest.TestCase):
     def tracks(self, *selectors):
         return selection.select(self.episode.manifest.tracks, selectors)
 
-    def download(self, tracks):
+    def download(self, tracks, **options):
         downloader = TrackDownloader(self.client, 2)
-        episodes = EpisodeDownloader(downloader, self.root, Progress(disable=True))
+        episodes = EpisodeDownloader(downloader, self.root, Progress(disable=True), **options)
         return episodes.download_all([(self.episode, tracks)])
 
     def test_saves_tracks_with_manifests_quantumstreamer_plays_offline(self):
@@ -106,6 +106,22 @@ class EpisodeDownloaderTests(unittest.TestCase):
         self.download(self.tracks("esmx", "enus_captions"))
         self.assertEqual((self.folder / "J1A_esmx_256000.isma").read_bytes(), b"kept")
         self.assertFalse(any("esmx" in url for url in self.client.requests[1:]))
+
+    def test_saves_subtitles_with_the_episode_title(self):
+        self.download(self.tracks("enus"), extract_subtitles=True, episode_title=True)
+        self.assertEqual(
+            (self.folder / "enus_captions.srt").read_bytes(),
+            b"1\r\n00:00:00,500 --> 00:00:01,500\r\nenus_captions 0\r\n\r\n"
+            b"2\r\n00:00:02,500 --> 00:00:03,500\r\nenus_captions 1\r\n\r\n"
+            b"3\r\n00:00:04,500 --> 00:00:05,500\r\nenus_captions 2\r\n\r\n"
+            b"4\r\n00:00:07,500 --> 00:00:09,833\r\nEPISODE 1: Monarch Solutions\r\n",
+        )
+
+    def test_keeps_subtitles_that_may_be_edited(self):
+        self.folder.mkdir()
+        (self.folder / "enus_captions.srt").write_text("edited", encoding="utf-8")
+        self.download(self.tracks("enus_captions"), extract_subtitles=True)
+        self.assertEqual((self.folder / "enus_captions.srt").read_text(encoding="utf-8"), "edited")
 
     def test_reports_the_episodes_that_fail_and_carries_on(self):
         broken = Episode("J1B", self.episode.manifest)
