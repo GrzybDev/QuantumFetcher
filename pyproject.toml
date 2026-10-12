@@ -10,7 +10,7 @@ license = "GPL-3.0-or-later"
 license-files = [
     "LICENSE.md",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
     "humanize>=4.16.0",
     "inquirer>=3.4.1",
