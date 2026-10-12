@@ -1,199 +1,113 @@
-import os
+"""SubRip subtitles from the TTML captions of a text track, which QuantumStreamer shows instead of
+the track's own captions when they are saved as <track name>.srt in the episode folder."""
+
+import re
 import xml.etree.ElementTree as ET
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass, replace
 from pathlib import Path
 
-from quantumfetcher.constants import TTML_NS
-from quantumfetcher.logger import logger
+from quantumfetcher.errors import FetchError
+from quantumfetcher.mp4 import read_fragments
+
+EPISODE_TITLES = {
+    1: "Monarch Solutions",
+    2: "Prisoner",
+    3: "Deception",
+    4: "The Lifeboat Protocol",
+}
+
+_TTML = "{http://www.w3.org/ns/ttml}"
+_CLOCK_TIME = re.compile(r"(\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
+_OFFSET_TIME = re.compile(r"(\d+(?:\.\d+)?)(h|m|s|ms)")
+_OFFSET_UNITS = {"h": 3600, "m": 60, "s": 1, "ms": 0.001}
+_EPISODE_NUMBER = re.compile(r"J(\d+)")
+# When the title card is on screen in every episode.
+_TITLE_START, _TITLE_END = 7.5, 9.833
+# A caption spanning fragments comes in pieces this close together.
+_SPLIT_GAP = 0.1
 
 
-def __get_fragment_offsets(reader, path):
-    reader.seek(-4, os.SEEK_END)
-    mfroSize = int.from_bytes(reader.read(4))
-
-    reader.seek(-mfroSize, os.SEEK_END)
-
-    mfraBlockSize = int.from_bytes(reader.read(4))
-
-    if mfraBlockSize != mfroSize:
-        logger.error(
-            f"Cannot extract subtitles! Invalid mfro block size in track file {path} (Expected: {mfroSize}, Got: {mfraBlockSize})."
-        )
-        return
-
-    mfraMagic = reader.read(4)
-
-    if mfraMagic != b"mfra":
-        logger.error(
-            f"Cannot extract subtitles! Invalid mfra magic in track file {path} (Expected: mfra, Got: {mfraMagic})."
-        )
-        return
-
-    reader.seek(4, os.SEEK_CUR)
-    tfraMagic = reader.read(4)
-
-    if tfraMagic != b"tfra":
-        logger.error(
-            f"Cannot extract subtitles! Invalid tfra magic in track file {path} (Expected: tfra, Got: {mfraMagic})."
-        )
-        return
-
-    version = int.from_bytes(reader.read(1))
-    readSize = 8 if version == 1 else 4
-
-    reader.seek(7, os.SEEK_CUR)
-
-    temp = int.from_bytes(reader.read(4))
-    lenSizeOfTrafNum = ((temp & 0x3F) >> 4) + 1
-    lenSizeOfTrunNum = ((temp & 0xC) >> 2) + 1
-    lenSizeOfSampleNum = (temp & 0x3) + 1
-
-    numOfEntries = int.from_bytes(reader.read(4))
-    fragments = []
-
-    for _ in range(numOfEntries):
-        time = int.from_bytes(reader.read(readSize))
-        offset = int.from_bytes(reader.read(readSize))
-        _ = int.from_bytes(reader.read(lenSizeOfTrafNum))
-        _ = int.from_bytes(reader.read(lenSizeOfTrunNum))
-        _ = int.from_bytes(reader.read(lenSizeOfSampleNum))
-
-        fragments.append((time, offset))
-
-    return fragments
+@dataclass(frozen=True)
+class Cue:
+    start: float
+    end: float
+    text: str
 
 
-def __get_fragment_data(reader, offset):
-    reader.seek(offset, os.SEEK_SET)
-    moofSize = int.from_bytes(reader.read(4), "big")
-    _ = reader.read(moofSize - 4)
-
-    mdatSize = int.from_bytes(reader.read(4), "big")
-    mdatBlock = reader.read(mdatSize - 4)
-
-    return mdatBlock[0x4:].decode()
-
-
-def __get_episode_title(episode_num):
-    match episode_num:
-        case 1:
-            return "EPISODE 1: Monarch Solutions"
-        case 2:
-            return "EPISODE 2: Prisoner"
-        case 3:
-            return "EPISODE 3: Deception"
-        case 4:
-            return "EPISODE 4: The Lifeboat Protocol"
-        case _:
-            return ""
+def read_cues(path: Path, timescale: int) -> list[Cue]:
+    """The captions of every fragment of a downloaded text track, timed from the episode start."""
+    with path.open("rb") as file:
+        return [
+            cue
+            for start_time, document in read_fragments(file)
+            for cue in parse_ttml(document, start_time / timescale)
+        ]
 
 
-def __get_text_with_line_breaks(elem):
-    lines = []
-
-    for node in elem.iter():
-        if node.tag.endswith("br"):
-            lines.append("\n")
-        elif node.text:
-            lines.append(node.text.replace("\r", "").replace("\n", ""))
-            
-        if node is not elem and node.tail:
-            lines.append(node.tail.replace("\r", "").replace("\n", ""))
-
-    text = "".join(lines)
-    return "\n".join(line.strip() for line in text.split("\n"))
+def parse_ttml(document: bytes, offset: float) -> Iterator[Cue]:
+    """The paragraphs of a TTML document, with times relative to `offset` seconds."""
+    try:
+        root = ET.fromstring(document)
+    except ET.ParseError as error:
+        raise FetchError(f"Invalid captions: {error}") from error
+    for paragraph in root.iter(f"{_TTML}p"):
+        begin, end = paragraph.get("begin"), paragraph.get("end")
+        if begin is None or end is None:
+            raise FetchError("A caption without its begin and end time")
+        yield Cue(offset + _seconds(begin), offset + _seconds(end), _text(paragraph))
 
 
-def __parse_ttml_time(time_str: str) -> float:
-    parts = time_str.split(':')
-    if len(parts) == 3:
-        h, m, s = parts
-        sec = int(h) * 3600 + int(m) * 60
-        s_parts = s.split('.')
-        sec += int(s_parts[0])
-        if len(s_parts) > 1:
-            sec += float("0." + s_parts[1])
-        return sec
-    return 0.0
+def episode_title(episode_id: str) -> Cue | None:
+    """A cue with the title of the episode `episode_id` belongs to, such as J1A to episode 1."""
+    match = _EPISODE_NUMBER.match(episode_id)
+    title = EPISODE_TITLES.get(int(match[1])) if match else None
+    return Cue(_TITLE_START, _TITLE_END, f"EPISODE {match[1]}: {title}") if title else None
 
 
-def __format_srt_time(total_sec: float) -> str:
-    h = int(total_sec // 3600)
-    m = int((total_sec % 3600) // 60)
-    s = int(total_sec % 60)
-    ms = int(round((total_sec - int(total_sec)) * 1000))
-    if ms == 1000:
-        s += 1
-        ms = 0
-        if s == 60:
-            m += 1
-            s = 0
-            if m == 60:
-                h += 1
-                m = 0
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-
-
-def extract_subtitles(subtitle_path: Path, episode_num: int, track_name: str, append_ep_title: bool = False):
-    segments = []
-
-    with open(subtitle_path, "rb") as f:
-        fragments = __get_fragment_offsets(f, subtitle_path)
-
-        if not fragments:
-            return
-
-        for tfra_time, offset in fragments:
-            frag_time_sec = tfra_time / 10000000.0
-            xml_data = __get_fragment_data(f, offset)
-
-            root = ET.fromstring(xml_data)
-            text_segments = root.findall(".//xmlns:p", namespaces=TTML_NS)
-
-            for segment in text_segments:
-                begin_time = segment.attrib.get("begin", "00:00:00.000")
-                end_time = segment.attrib.get("end", "00:00:00.000")
-                text = __get_text_with_line_breaks(segment)
-
-                abs_begin = frag_time_sec + __parse_ttml_time(begin_time)
-                abs_end = frag_time_sec + __parse_ttml_time(end_time)
-
-                segments.append({
-                    "begin": abs_begin,
-                    "end": abs_end,
-                    "text": text
-                })
-
-    if append_ep_title:
-        ep_title = __get_episode_title(episode_num)
-        if ep_title:
-            segments.append({
-                "begin": 7.5,
-                "end": 9.833,
-                "text": ep_title
-            })
-
-    segments.sort(key=lambda x: x["begin"])
-
-    merged_segments = []
-    for seg in segments:
-        if not seg["text"] or not seg["text"].strip():
+def to_srt(cues: Iterable[Cue]) -> str:
+    """SubRip subtitles of the non-empty cues in time order, joining the pieces of split ones."""
+    merged: list[Cue] = []
+    for cue in sorted(cues, key=lambda cue: cue.start):
+        if not cue.text.strip():
             continue
-        if merged_segments and merged_segments[-1]["text"] == seg["text"]:
-            if seg["begin"] - merged_segments[-1]["end"] < 0.1:
-                merged_segments[-1]["end"] = max(merged_segments[-1]["end"], seg["end"])
-                continue
-        merged_segments.append(seg)
+        if merged and merged[-1].text == cue.text and cue.start - merged[-1].end < _SPLIT_GAP:
+            merged[-1] = replace(merged[-1], end=max(merged[-1].end, cue.end))
+        else:
+            merged.append(cue)
+    return "\n".join(
+        f"{number}\n{_timestamp(cue.start)} --> {_timestamp(cue.end)}\n{cue.text}\n"
+        for number, cue in enumerate(merged, 1)
+    )
 
-    srt_content = []
-    srt_index = 1
-    for seg in merged_segments:
-        srt_content.append(f"{srt_index}")
-        srt_content.append(f"{__format_srt_time(seg['begin'])} --> {__format_srt_time(seg['end'])}")
-        srt_content.append(seg["text"])
-        srt_content.append("")
-        srt_index += 1
 
-    with open(
-        subtitle_path.parent / f"{track_name}.srt", "w", encoding="utf-8"
-    ) as f:
-        f.write("\n".join(srt_content))
+def _seconds(time: str) -> float:
+    if match := _CLOCK_TIME.fullmatch(time):
+        hours, minutes, seconds = match.groups()
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    if match := _OFFSET_TIME.fullmatch(time):
+        return float(match[1]) * _OFFSET_UNITS[match[2]]
+    raise FetchError(f"Unsupported caption time {time!r}")
+
+
+def _text(paragraph: ET.Element) -> str:
+    """The text of a paragraph, with its line breaks but not the source's own formatting."""
+
+    def flatten(element: ET.Element) -> Iterator[str]:
+        yield _unwrap(element.text)
+        for child in element:
+            yield "\n" if child.tag == f"{_TTML}br" else "".join(flatten(child))
+            yield _unwrap(child.tail)
+
+    return "\n".join(line.strip() for line in "".join(flatten(paragraph)).split("\n"))
+
+
+def _unwrap(text: str | None) -> str:
+    return (text or "").replace("\r", "").replace("\n", "")
+
+
+def _timestamp(seconds: float) -> str:
+    hours, milliseconds = divmod(round(seconds * 1000), 3_600_000)
+    minutes, milliseconds = divmod(milliseconds, 60_000)
+    seconds, milliseconds = divmod(milliseconds, 1000)
+    return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"

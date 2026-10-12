@@ -1,4 +1,4 @@
-from quantumfetcher import app
+from quantumfetcher.cli import app
 
 if __name__ == "__main__":
     app()

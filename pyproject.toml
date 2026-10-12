@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=84"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "quantumfetcher"
 version = "1.1.1"
@@ -10,17 +14,28 @@ license = "GPL-3.0-or-later"
 license-files = [
     "LICENSE.md",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.14"
 dependencies = [
-    "humanize>=4.16.0",
     "inquirer>=3.4.1",
     "requests>=2.34.2",
-    "typer>=0.27.0",
-    "yt-dlp>=2026.7.4",
+    "rich>=15.0.0",
+    "typer>=0.27.3",
 ]
 
 [tool.uv]
 package = true
 
 [project.scripts]
-quantumfetcher = "quantumfetcher:app"
+quantumfetcher = "quantumfetcher.cli:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
