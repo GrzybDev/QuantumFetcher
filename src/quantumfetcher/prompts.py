@@ -1,34 +1,32 @@
-"""Questions asked in the terminal about what the command line leaves out."""
+"""Questions asked in the terminal about what the command line leaves out.
 
-import os
+Ctrl+C while a question is asked raises KeyboardInterrupt, which aborts the command.
+"""
+
 from collections.abc import Collection, Sequence
 from pathlib import Path
 
-# inquirer's blessed backend warns about each terminal capability it does not know, such as ssupm
-# in some Windows terminals, unless told not to before it is imported.
-os.environ.setdefault("BLESSED_NOWARN_UNKNOWN_CAPS", "1")
-
-import inquirer
+import questionary
 
 
 def folder(message: str) -> Path:
-    question = inquirer.Path(
-        "answer", message=message, path_type=inquirer.Path.DIRECTORY, exists=True
+    question = questionary.path(
+        message,
+        only_directories=True,
+        validate=lambda answer: Path(answer).is_dir() or "Not an existing folder",
     )
-    return Path(_ask(question))
+    return Path(question.unsafe_ask())
 
 
 def checkbox(
     message: str, choices: Sequence[tuple[str, str]], default: Collection[str] = ()
 ) -> list[str]:
     """The values of the (label, value) choices picked."""
-    hint = f"{message} (space toggles, ctrl+a selects all, enter confirms)"
-    return _ask(inquirer.Checkbox("answer", message=hint, choices=choices, default=list(default)))
+    options = [
+        questionary.Choice(label, value=value, checked=value in default) for label, value in choices
+    ]
+    return questionary.checkbox(message, choices=options).unsafe_ask()
 
 
 def confirm(message: str, default: bool) -> bool:
-    return _ask(inquirer.Confirm("answer", message=message, default=default))
-
-
-def _ask(question: inquirer.questions.Question):
-    return inquirer.prompt([question], raise_keyboard_interrupt=True)["answer"]
+    return questionary.confirm(message, default=default).unsafe_ask()

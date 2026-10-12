@@ -21,7 +21,7 @@ Game Info
 | Developer(s) | Remedy Entertainment                                         |
 | Publisher(s) | Microsoft Studios                                            |
 |  Director(s) | Sam Lake, Mikael Kasurinen                                   |
-|  Producer(s) | MiloĹˇ JeĹ™Ăˇbek                                                |
+|  Producer(s) | Miloš Jeřábek                                                |
 |       Engine | Northlight Engine                                            |
 |  Platform(s) | Windows, Xbox One                                            |
 |     Genre(s) | Action-adventure, third-person shooter                       |
