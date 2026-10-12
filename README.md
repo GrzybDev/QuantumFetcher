@@ -7,7 +7,7 @@ Table of Contents
 - [Game Info](#game-info)
 - [Legal notes](#legal-notes)
 - [Features](#features)
-- [Requirements](#build-requirements)
+- [Requirements](#requirements)
 - [Installing](#installing)
 - [Usage](#usage)
 - [Credits](#credits)
@@ -36,21 +36,20 @@ Legal notes
 Features
 --------
 
-- Download all Quantum Break Live Action episodes in selected languages and bitrates for offline in-game playback.
-- Text streams extraction to SubRip (.srt)
-- Dump contents of `videoList.rmdj`
-- Patch `videoList.rmdj` to point to custom [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server.
-- Build `videoList.rmdj` from any JSON file.
+- Download Quantum Break live action episodes in the chosen qualities and languages for offline in-game playback through [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git).
+- Resume interrupted downloads where they stopped.
+- Save captions as SubRip (`.srt`) files, which QuantumStreamer shows instead of the original ones, so they can be edited or translated.
+- Dump `videoList.rmdj` to JSON, build it from JSON, or patch it to point to a [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server.
 
 Requirements
 ------------
 
-- Python 3.10+
+- Python 3.14+
 
 Installing
 ----------
 
-Either use compiled portable build for Windows or Linux from [Releases](https://github.com/GrzybDev/QuantumFetcher/releases) page or use your python package management system (like `pipx` or `uv`)
+Either use compiled portable build for Windows, Linux or macOS from [Releases](https://github.com/GrzybDev/QuantumFetcher/releases) page or use your python package management system (like `pipx` or `uv`)
 
 Example:
 `pipx install git+https://github.com/GrzybDev/QuantumFetcher.git`
@@ -62,69 +61,90 @@ Usage
 quantumfetcher --help
 ```
 
-Quantum Fetcher is split into two command groups: `download` (fetching episodes) and `videolist` (managing the `videoList.rmdj` manifest).
+Every command takes the game folder (the one holding `data` and `videos`) as an optional argument, after `INPUT_JSON` for `videolist build`. When it is left out, the tool asks for it, unless the paths it would be used for are given as options.
 
 ### Downloading episodes
 
 ```sh
-quantumfetcher download [PATH] [OPTIONS]
+quantumfetcher download [GAME_DIR] [OPTIONS]
 ```
 
-`PATH` is the root game folder. You can run this command in interactive mode or non-interactive mode.
+Anything left out on the command line is asked for interactively: the episodes, the tracks of each kind and whether to save subtitles. With `--yes` (or when the input is not a terminal) the defaults below are used instead.
 
-By default, if no filters are provided then english audio and subtitles will be downloaded with highest quality video stream.
+| Option                    | Description                                                                     | Default                          |
+|--------------------------:|:--------------------------------------------------------------------------------|:---------------------------------|
+| `-e`, `--episodes`        | Comma-separated episode IDs, or `all`                                           | `all`                            |
+| `--video`                 | Comma-separated video selectors                                                 | `best`                           |
+| `--audio`                 | Comma-separated audio selectors                                                 | `enus`                           |
+| `--text`                  | Comma-separated caption selectors                                               | `enus`                           |
+| `--extract-subtitles`     | Save the captions as SubRip files                                               | off                              |
+| `--append-episode-title`  | Add the episode title to the saved subtitles                                    | off                              |
+| `--videolist-path`        | `videoList.rmdj` to read the episodes from                                      | `data/videoList.rmdj` in the game folder, or its `_original` copy once patched |
+| `--episodes-path`         | Folder to save the episodes in                                                  | `videos/episodes` in the game folder |
+| `--retries`               | Times to retry a failed request                                                 | 10                               |
+| `--workers`               | Requests to make at once                                                        | 8                                |
+| `-y`, `--yes`             | Use the defaults instead of asking                                              |                                  |
 
-The tool automatically falls back to interactive mode (prompting for the game folder, episodes, and stream quality/languages) whenever `PATH` or a filter option below is omitted — there is no separate flag to request it.
+A selector picks the tracks it names:
 
-| Parameter          | Description                                                        | Default value                    |
-|--------------------:|:-------------------------------------------------------------------|:----------------------------------|
-| --videolist-path    | Path to videoList.rmdj file                                        | data/videoList.rmdj inside PATH   |
-| --episodes-path     | Path to where episodes will be saved                                | videos/episodes inside PATH       |
-| --retries           | Number of retries for stream and fragment downloads                 | 10                                |
+| Selector                  | Picks                                                                           |
+|--------------------------:|:--------------------------------------------------------------------------------|
+| `best`                    | the track with the highest bitrate                                              |
+| `all`, `none`             | every track, no track                                                           |
+| `1080p`                   | the video tracks of that height                                                 |
+| `12000000`                | the tracks of that bitrate                                                      |
+| `enus`, `enus_captions`   | the tracks of that stream, by its locale or its full name                       |
+| `eng`                     | the tracks in that ISO 639-2 language                                           |
 
-Supported filters are provided below:
+To see the tracks the episodes offer and the selectors that pick them, run:
 
-| Parameter             | Description                                           |
-|----------------------:|:------------------------------------------------------|
-| --episodes            | Comma-separated list of episode IDs to download       |
-| --video-resolutions   | Comma-seperated list of video resolutions to download |
-| --video-bitrates      | Comma-seperated list of video bitrates to download    |
-| --audio-languages     | Comma-seperated list of audio languages to download   |
-| --audio-bitrates      | Comma-seperated list of audio bitrates to download    |
-| --text-languages      | Comma-seperated list of text languages to download    |
-| --text-bitrates       | Comma-seperated list of text bitrates to download     |
+```sh
+quantumfetcher formats [GAME_DIR] [-e EPISODES]
+```
 
-*Note: All filters support `all` value (Example: `--audio-languages all` will download audio tracks in all languages)*
+For example, to download the first episode in 1080p with English and Spanish (Mexico) audio, English captions and their subtitles:
 
-You can view available formats (bitrates, languages etc.) by running the `download` command with the `--show-formats` flag.
+```sh
+quantumfetcher download GAME_DIR -e J1A --video 12000000 --audio enus,esmx --text enus --extract-subtitles
+```
 
-Running the `download` command with the `--extract-subtitles` flag will extract text streams to SubRip format (.srt) usable by [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git). Add `--append-episode-title` to also append the episode title to the extracted subtitles.
+Each episode is saved in its own folder (such as `videos/episodes/J1A`), where QuantumStreamer looks for it:
+
+| File                          | Contents                                                                    |
+|:------------------------------|:----------------------------------------------------------------------------|
+| `J1A_<stream>_<bitrate>.ismv`, `.isma`, `.ismt` | a video, audio or caption track, playable on its own        |
+| `J1A.ism`, `J1A.ismc`         | the server and client manifests QuantumStreamer serves the tracks with      |
+| `<stream>.srt`                | subtitles QuantumStreamer shows instead of that caption track's own         |
+
+Tracks are downloaded to `.part` files first, so an interrupted download carries on where it stopped when run again, and finished tracks are kept. Existing `.srt` files are never overwritten, as they may hold edited or translated captions; delete one to save it again.
+
+The manifests offer every track in the episode folder, also the ones of earlier downloads, so you can add a language later. They are only written once the folder holds both a video and an audio track, since QuantumStreamer plays an episode from its local manifests instead of the server's. That way you can download just the captions of episodes to translate them while still streaming the episodes themselves.
+
+QuantumStreamer plays an episode from a single server manifest, so any other `.ism` file in the folder, such as one written by an older version of this tool under another name, is renamed to `.ism.old`. Older versions also named the tracks differently, so their tracks are downloaded again.
 
 ### Managing videoList.rmdj
 
 This tool can also patch the original `videoList.rmdj` file to make the game point to a [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) compatible server:
 
 ```sh
-quantumfetcher videolist patch [PATH]
+quantumfetcher videolist patch [GAME_DIR] [--server HOST:PORT]
 ```
 
-By default, it will update `videoList.rmdj` to point to `127.0.0.1:10000`. You can change the default to any other host that is compatible with [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git) via `--server`/`-s`.
+By default, it will update `videoList.rmdj` to point to `127.0.0.1:10000`. The original file is kept as `videoList_original.rmdj`, which is also where QuantumStreamer looks for it.
 
-You can also build the `videoList.rmdj` file from scratch from a JSON file:
+You can also build the `videoList.rmdj` file from a JSON object mapping episode IDs to manifest URLs. Once the list is patched, the built list is saved as `videoList_original.rmdj`, which is the one the episodes are read from:
 
 ```sh
-quantumfetcher videolist build INPUT_JSON --path PATH
+quantumfetcher videolist build INPUT_JSON [GAME_DIR] [--videolist-path OUTPUT]
 ```
 
-You can specify the output path for the built file via `--videolist-path`.
-
-In order to dump the contents of a `videoList.rmdj` file, use:
+In order to dump the contents of a `videoList.rmdj` file as JSON, use:
 
 ```sh
-quantumfetcher videolist dump [PATH] --output OUTPUT_JSON
+quantumfetcher videolist dump [GAME_DIR] [--output OUTPUT_JSON]
 ```
 
-You can also print the contents to console by setting `--output`/`-o` to `-`.
+Without `--output` (or with `--output -`) the contents are printed to the console.
 
 In order to be able to use downloaded episodes, you need to install [QuantumStreamer](https://github.com/GrzybDev/QuantumStreamer.git).
 
