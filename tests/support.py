@@ -1,3 +1,5 @@
+import struct
+
 MANIFEST_URL = "http://cdn.test/quantum/J1A.ism/manifest?tkn=secret"
 CHUNK = 20_000_000
 SPS = bytes.fromhex("6742c01eab40")
@@ -52,3 +54,15 @@ def fragment_url(name: str, bitrate: int, start_time: int) -> str:
         "http://cdn.test/quantum/J1A.ism/"
         f"QualityLevels({bitrate})/Fragments({name}={start_time})?tkn=secret"
     )
+
+
+def box(kind: bytes, *payload: bytes) -> bytes:
+    content = b"".join(payload)
+    return struct.pack(">I4s", 8 + len(content), kind) + content
+
+
+def fragment(payload: bytes, track_id: int = 1) -> bytes:
+    """A movie fragment like the server sends: moof with mfhd and traf/tfhd, then mdat."""
+    tfhd = box(b"tfhd", struct.pack(">II", 0, track_id))
+    moof = box(b"moof", box(b"mfhd", struct.pack(">II", 0, 1)), box(b"traf", tfhd))
+    return moof + box(b"mdat", payload)
