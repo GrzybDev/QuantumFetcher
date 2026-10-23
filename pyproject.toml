@@ -41,7 +41,13 @@ line-length = 100
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF", "TID251"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF", "TID251", "D"]
+# Modules and types need a docstring only when their name does not tell their role, and magic
+# methods keep the meaning Python gives them.
+ignore = ["D100", "D101", "D104", "D105", "D106"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
 "quantumfetcher.choice".msg = "Only the command line modules use the terminal."
@@ -54,6 +60,8 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF", "TID251"]
 [tool.ruff.lint.per-file-ignores]
 "src/quantumfetcher/{__main__,choice,cli,prompts}.py" = ["TID251"]
 "tests/**" = ["TID251"]
+# Test names say what each test proves.
+"tests/test_*.py" = ["D"]
 
 [tool.pytest]
 testpaths = ["tests"]

@@ -10,6 +10,11 @@ import questionary
 
 
 def folder(message: str) -> Path:
+    """Ask for an existing folder until one is given.
+
+    Args:
+        message: The question to ask.
+    """
     question = questionary.path(
         message,
         only_directories=True,
@@ -21,7 +26,13 @@ def folder(message: str) -> Path:
 def checkbox(
     message: str, choices: Sequence[tuple[str, str]], default: Collection[str] = ()
 ) -> list[str]:
-    """The values of the (label, value) choices picked."""
+    """Ask which of the choices to pick, returning the values picked.
+
+    Args:
+        message: The question to ask.
+        choices: The (label, value) pairs to pick from.
+        default: The values picked to begin with.
+    """
     options = [
         questionary.Choice(label, value=value, checked=value in default) for label, value in choices
     ]
@@ -30,5 +41,11 @@ def checkbox(
 
 
 def confirm(message: str, default: bool) -> bool:
+    """Ask a yes or no question.
+
+    Args:
+        message: The question to ask.
+        default: The answer Enter gives.
+    """
     answer: bool = questionary.confirm(message, default=default).unsafe_ask()
     return answer

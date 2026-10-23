@@ -36,6 +36,16 @@ _LANGUAGES = {
 
 @dataclass(frozen=True)
 class Option:
+    """A selector offered for the tracks of one type, with what it picks across the episodes.
+
+    Attributes:
+        type: The type of the tracks it picks.
+        selector: The selector, as the command line takes it.
+        description: What the tracks hold, such as their resolution, codec and bitrate.
+        size: The average estimated size of a track it picks, or None when none has an estimate.
+        episodes: The number of episodes it picks a track in.
+    """
+
     type: StreamType
     selector: str
     description: str
@@ -44,7 +54,12 @@ class Option:
 
 
 def select(tracks: Iterable[Track], selectors: Iterable[str]) -> list[Track]:
-    """The tracks the selectors pick, in the order of `tracks`."""
+    """The tracks the selectors pick, in the order of `tracks`.
+
+    Args:
+        tracks: The tracks to pick from.
+        selectors: The selectors, in any letter case.
+    """
     tracks = list(tracks)
     selectors = {selector.casefold() for selector in selectors}
     best = max(tracks, key=attrgetter("bitrate"), default=None) if BEST in selectors else None
@@ -56,7 +71,12 @@ def select(tracks: Iterable[Track], selectors: Iterable[str]) -> list[Track]:
 
 
 def unknown(selectors: Iterable[str], tracks: Iterable[Track]) -> list[str]:
-    """The selectors that pick none of `tracks`, other than best and none."""
+    """The selectors that pick none of `tracks`, other than best and none.
+
+    Args:
+        selectors: The selectors to check.
+        tracks: The tracks they pick from.
+    """
     names = set().union(*map(_names, tracks))
     return [
         selector
@@ -66,8 +86,14 @@ def unknown(selectors: Iterable[str], tracks: Iterable[Track]) -> list[str]:
 
 
 def options(episodes: Iterable[Sequence[Track]]) -> list[Option]:
-    """What to choose from the tracks of each episode: best for video, then one option for each
-    track, video by bitrate first, then audio and text in the order the episodes list them."""
+    """What to choose from the tracks of the episodes: one option for each selector of a track.
+
+    Best comes first when there is video, then video by falling bitrate, then audio and text in
+    the order the episodes list them.
+
+    Args:
+        episodes: The tracks of each episode.
+    """
     episodes = list(episodes)
     groups: dict[tuple[StreamType, str], list[Track]] = {}
     for track in sorted((track for tracks in episodes for track in tracks), key=_order):
@@ -92,7 +118,12 @@ def options(episodes: Iterable[Sequence[Track]]) -> list[Option]:
 
 
 def defaults(kind: StreamType, episodes: Iterable[Sequence[Track]]) -> set[str]:
-    """The options the default selectors of `kind` pick in any of the episodes."""
+    """The options the default selectors of `kind` pick in any of the episodes.
+
+    Args:
+        kind: The type of the tracks.
+        episodes: The tracks of each episode.
+    """
     named = [default for default in DEFAULTS[kind] if default != BEST]
     picked = {
         selector(track) for tracks in episodes for track in select(of_type(tracks, kind), named)
@@ -111,11 +142,20 @@ def of_type(tracks: Iterable[Track], kind: StreamType) -> list[Track]:
 
 
 def selector(track: Track) -> str:
-    """The selector that picks this track and no other track of its episode."""
+    """The selector that picks this track and no other track of its episode.
+
+    Args:
+        track: The track to pick.
+    """
     return str(track.bitrate) if track.type is StreamType.VIDEO else track.name
 
 
 def _names(track: Track) -> set[str]:
+    """The casefolded selectors that pick `track` by name, such as all, enus, eng or 1080p.
+
+    Args:
+        track: The track to name.
+    """
     names = {ALL, track.name, track.locale, str(track.bitrate)}
     if track.language:
         names.add(track.language)
@@ -125,6 +165,11 @@ def _names(track: Track) -> set[str]:
 
 
 def _order(track: Track) -> tuple[int, int]:
+    """Sort key listing video by falling bitrate, then audio and text in their own order.
+
+    Args:
+        track: The track to place.
+    """
     position = list(StreamType).index(track.type)
     return position, -track.bitrate if track.type is StreamType.VIDEO else 0
 

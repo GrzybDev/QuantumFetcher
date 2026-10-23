@@ -44,6 +44,15 @@ class HttpClient:
         self._session.mount("https://", adapter)
 
     def get(self, url: str) -> bytes:
+        """Fetch the body of `url`, retrying the failures that may pass with growing waits.
+
+        Args:
+            url: The URL to fetch.
+
+        Raises:
+            FetchError: The request failed for good, or the client was closed, also while the
+                request waited for a retry.
+        """
         attempt = 0
         while not self._closed.is_set():
             try:

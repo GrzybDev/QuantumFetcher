@@ -4,6 +4,7 @@ import struct
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import override
 
 from quantumfetcher.errors import FetchError
 from quantumfetcher.manifest import ClientManifest, Track
@@ -22,11 +23,20 @@ SMIL = "{http://www.w3.org/2001/SMIL20/Language}"
 
 
 def encrypt(data: bytes) -> bytes:
+    """Encrypt a video list the way the game stores it.
+
+    Args:
+        data: The list's JSON.
+    """
     return bytes(byte ^ KEY[index % len(KEY)] for index, byte in enumerate(data))
 
 
 def client_manifest(chunks: int = 3) -> bytes:
-    """A client manifest shaped like the episodes' own, with every chunk lasting CHUNK."""
+    """A client manifest shaped like the episodes' own, with every chunk lasting CHUNK.
+
+    Args:
+        chunks: The number of fragments of each track.
+    """
     timeline = "".join(f'<c n="{number}" d="{CHUNK}"/>' for number in range(chunks))
     codec = (b"\0\0\0\1" + SPS + b"\0\0\0\1" + PPS).hex().upper()
     levels = "".join(
@@ -85,6 +95,13 @@ def track(name: str, bitrate: int = 256000, chunks: int = 3) -> Track:
 
 
 def fragment_url(name: str, bitrate: int, start_time: int) -> str:
+    """The URL the server sends a fragment of the episode from.
+
+    Args:
+        name: The stream name.
+        bitrate: The bitrate of the quality level.
+        start_time: The fragment's start time in the manifest's timescale.
+    """
     return (
         "http://cdn.test/quantum/J1A.ism/"
         f"QualityLevels({bitrate})/Fragments({name}={start_time})?tkn=secret"
@@ -92,12 +109,23 @@ def fragment_url(name: str, bitrate: int, start_time: int) -> str:
 
 
 def box(kind: bytes, *payload: bytes) -> bytes:
+    """An MP4 box with a 32-bit size.
+
+    Args:
+        kind: The four-letter box type.
+        payload: The pieces of the box's content.
+    """
     content = b"".join(payload)
     return struct.pack(">I4s", 8 + len(content), kind) + content
 
 
 def fragment(payload: bytes, track_id: int = 1) -> bytes:
-    """A movie fragment like the server sends: moof with mfhd and traf/tfhd, then mdat."""
+    """A movie fragment like the server sends: moof with mfhd and traf/tfhd, then mdat.
+
+    Args:
+        payload: The media data.
+        track_id: The track ID tfhd names.
+    """
     tfhd = box(b"tfhd", struct.pack(">II", 0, track_id))
     moof = box(b"moof", box(b"mfhd", struct.pack(">II", 0, 1)), box(b"traf", tfhd))
     return moof + box(b"mdat", payload)
@@ -120,6 +148,11 @@ def write_track(track: Track, fragments: Sequence[bytes], file: io.BytesIO | Non
 
 
 def ttml(*paragraphs: str) -> bytes:
+    """A TTML captions document like the ones in caption fragments.
+
+    Args:
+        paragraphs: The p elements of its body.
+    """
     return (
         '<?xml version="1.0" encoding="UTF-8"?><tt xml:lang="eng" '
         f'xmlns="http://www.w3.org/ns/ttml"><body><div>{"".join(paragraphs)}</div></body></tt>'
@@ -127,12 +160,25 @@ def ttml(*paragraphs: str) -> bytes:
 
 
 def caption(begin: str, end: str, text: str) -> str:
+    """A TTML paragraph with a single line.
+
+    Args:
+        begin: When the caption shows.
+        end: When it hides.
+        text: Its line.
+    """
     return f'<p begin="{begin}" end="{end}" region="speaker"><span>{text}</span></p>'
 
 
 def episode_responses(chunks: int = 3) -> dict[str, bytes]:
-    """The manifest and every fragment of an episode: media fragments hold their own URL and
-    caption fragments a line naming their stream and number."""
+    """The manifest and every fragment of an episode.
+
+    Media fragments hold their own URL and caption fragments a line naming their stream and
+    number.
+
+    Args:
+        chunks: The number of fragments of each track.
+    """
     responses = {MANIFEST_URL: client_manifest(chunks)}
     starts = [number * CHUNK for number in range(chunks)]
     tracks = [("video", bitrate) for bitrate in VIDEO] + [(name, 256000) for name in AUDIO]
@@ -228,6 +274,7 @@ class FakeClient(HttpClient):
         self.responses = dict(responses)
         self.requests: list[str] = []
 
+    @override
     def get(self, url: str) -> bytes:
         self.requests.append(url)
         response = self.responses.get(url, FetchError(f"404 Client Error: Not Found for {url}"))

@@ -25,28 +25,46 @@ class Episode:
 
 @dataclass(frozen=True)
 class EpisodeFolder:
-    """The folder named after an episode, where QuantumStreamer looks for the episode's files."""
+    """The folder named after an episode, where QuantumStreamer looks for the episode's files.
+
+    Attributes:
+        root: The folder holding a folder for each episode.
+        episode_id: The episode's ID in the video list.
+    """
 
     root: Path
     episode_id: str
 
     @property
     def path(self) -> Path:
+        """The folder's location in `root`."""
         return self.root / self.episode_id
 
     @property
     def client_manifest(self) -> Path:
+        """The client manifest QuantumStreamer serves to the game instead of the server's."""
         return self.path / f"{self.episode_id}.ismc"
 
     @property
     def server_manifest(self) -> Path:
+        """The server manifest that tells QuantumStreamer which file holds each track."""
         return self.path / f"{self.episode_id}.ism"
 
     def track(self, track: Track) -> Path:
+        """The file of a track.
+
+        Args:
+            track: The track the file holds.
+        """
         name = f"{self.episode_id}_{track.name}_{track.bitrate}{_EXTENSIONS[track.type]}"
         return self.path / name
 
     def subtitles(self, track: Track) -> Path:
+        """The SubRip file QuantumStreamer shows instead of a text track's captions.
+
+        Args:
+            track: The text track.
+        """
         return self.path / f"{track.name}.srt"
 
 

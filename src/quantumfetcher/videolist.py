@@ -14,6 +14,11 @@ _KEY = bytes.fromhex("ba7abb27039b72fd13eb70387e0fcb41e1d0eb54be8f136df0bae22adc
 
 
 def decode(data: bytes) -> dict[str, str]:
+    """The manifest URL of each episode ID in an encrypted video list.
+
+    Args:
+        data: The list as the game stores it.
+    """
     try:
         return validate(json.loads(_xor(data)))
     except ValueError as error:
@@ -21,10 +26,20 @@ def decode(data: bytes) -> dict[str, str]:
 
 
 def encode(videos: Mapping[str, str]) -> bytes:
+    """A video list encrypted the way the game stores it.
+
+    Args:
+        videos: The manifest URL of each episode ID.
+    """
     return _xor(json.dumps(videos, indent=4).encode())
 
 
 def validate(videos: object) -> dict[str, str]:
+    """Return decoded JSON after checking that it maps episode IDs to manifest URLs.
+
+    Args:
+        videos: The decoded JSON.
+    """
     if not isinstance(videos, dict) or not all(
         isinstance(key, str) and isinstance(value, str) for key, value in videos.items()
     ):
@@ -33,6 +48,11 @@ def validate(videos: object) -> dict[str, str]:
 
 
 def load(path: Path) -> dict[str, str]:
+    """The manifest URL of each episode ID in a video list file.
+
+    Args:
+        path: The list, encrypted the way the game stores it.
+    """
     try:
         return decode(path.read_bytes())
     except FetchError as error:
@@ -40,6 +60,12 @@ def load(path: Path) -> dict[str, str]:
 
 
 def save(path: Path, videos: Mapping[str, str]) -> None:
+    """Save a video list encrypted the way the game stores it.
+
+    Args:
+        path: The file to save to.
+        videos: The manifest URL of each episode ID.
+    """
     path.write_bytes(encode(videos))
 
 
@@ -58,6 +84,11 @@ def replace(path: Path, videos: Mapping[str, str]) -> None:
 
 
 def read_json(path: Path) -> dict[str, str]:
+    """The manifest URL of each episode ID in a JSON file.
+
+    Args:
+        path: The file, holding one JSON object.
+    """
     try:
         # From bytes, json also reads the UTF-16 and BOM-marked files Windows tools write.
         return validate(json.loads(path.read_bytes()))
@@ -66,8 +97,17 @@ def read_json(path: Path) -> dict[str, str]:
 
 
 def patch(path: Path, server: str) -> dict[str, str]:
-    """Point every episode of the list at a QuantumStreamer compatible server, keeping the
-    game's own list as its original first."""
+    """Point every episode of the list at a QuantumStreamer compatible server.
+
+    The game's own list is kept as its original first, which later patches start from.
+
+    Args:
+        path: The game's list.
+        server: The host and port of the server.
+
+    Returns:
+        The manifest URL of each episode ID in the patched list.
+    """
     original = original_path(path)
     if not original.exists():
         shutil.copy2(path, original)
@@ -77,12 +117,20 @@ def patch(path: Path, server: str) -> dict[str, str]:
 
 
 def original_path(path: Path) -> Path:
-    """Where the game's own list is kept once `path` is patched, as QuantumStreamer expects it."""
+    """Where the game's own list is kept once `path` is patched, as QuantumStreamer expects it.
+
+    Args:
+        path: The game's list.
+    """
     return path.with_stem(f"{path.stem}_original")
 
 
 def unpatched(path: Path) -> Path:
-    """The list with the episodes' own URLs: the kept original once `path` is patched."""
+    """The list with the episodes' own URLs: the kept original once `path` is patched.
+
+    Args:
+        path: The game's list.
+    """
     original = original_path(path)
     return original if original.exists() else path
 

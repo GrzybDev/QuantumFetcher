@@ -26,7 +26,26 @@ _SMIL_TAGS = {StreamType.VIDEO: "video", StreamType.AUDIO: "audio", StreamType.T
 
 @dataclass(frozen=True, slots=True)
 class Track:
-    """A quality level of a stream: what one track file holds."""
+    """A quality level of a stream: what one track file holds.
+
+    Attributes:
+        type: The type of the stream.
+        name: The stream's name, which fragment URLs and QuantumStreamer know it by.
+        language: The stream's ISO 639-2 language, if the manifest gives one.
+        bitrate: The bits per second the quality level declares.
+        fourcc: The codec, such as H264, AACL or TTML.
+        codec_private_data: The codec's setup data from the manifest.
+        width: The video width in pixels.
+        height: The video height in pixels.
+        sampling_rate: The audio samples per second.
+        channels: The number of audio channels.
+        bits_per_sample: The bits of each audio sample.
+        nal_unit_length: The bytes of the size before each H.264 NAL unit.
+        timescale: The time units per second of the start times and duration.
+        start_times: The start time of each fragment.
+        duration: The time the last fragment ends.
+        url_template: The fragment URL, with the start time to fill in.
+    """
 
     type: StreamType
     name: str
@@ -52,18 +71,25 @@ class Track:
 
     @property
     def label(self) -> str:
+        """The track's name in logs and progress, such as video 1080p 12000 kbps or audio enus."""
         if self.type is StreamType.VIDEO:
             return f"video {self.height}p {self.bitrate // 1000} kbps"
         return f"{self.type} {self.name}"
 
     @property
     def estimated_size(self) -> int | None:
+        """The bytes the track takes by its bitrate, or None for captions."""
         # Caption tracks declare a bitrate far above what their few words take.
         if self.type is StreamType.TEXT:
             return None
         return self.bitrate * self.duration // self.timescale // 8
 
     def fragment_url(self, start_time: int) -> str:
+        """The URL of the fragment that starts at `start_time`.
+
+        Args:
+            start_time: The fragment's start time, one of `start_times`.
+        """
         return _START_TIME.sub(str(start_time), self.url_template)
 
 
@@ -75,6 +101,12 @@ class ClientManifest:
 
     @classmethod
     def parse(cls, url: str, xml: bytes) -> Self:
+        """Read the tracks of a Smooth Streaming client manifest.
+
+        Args:
+            url: The URL the manifest came from, which fragment URLs are relative to.
+            xml: The manifest's document.
+        """
         try:
             root = ET.fromstring(xml)
             if root.tag != "SmoothStreamingMedia":
@@ -90,7 +122,11 @@ class ClientManifest:
         return cls(url, xml, tracks)
 
     def local_copy(self, tracks: Collection[Track]) -> bytes:
-        """This manifest offering only `tracks`, for QuantumStreamer to serve with their files."""
+        """This manifest offering only `tracks`, for QuantumStreamer to serve with their files.
+
+        Args:
+            tracks: The tracks to keep.
+        """
         kept = {(track.type, track.name, track.bitrate) for track in tracks}
         root = ET.fromstring(self.xml)
         for stream in root.findall("StreamIndex"):
@@ -115,6 +151,10 @@ def server_manifest(client_manifest: str, files: Iterable[tuple[Track, str]]) ->
 
     QuantumStreamer serves a fragment from the file whose element has the requested bitrate and,
     unless it is video, the requested track name.
+
+    Args:
+        client_manifest: The client manifest's file name.
+        files: Each track with the name of its file.
     """
     root = ET.Element("smil", xmlns=_SMIL)
     head = ET.SubElement(root, "head")
@@ -131,6 +171,13 @@ def server_manifest(client_manifest: str, files: Iterable[tuple[Track, str]]) ->
 
 
 def _tracks(stream: ET.Element, manifest_url: str, timescale: int) -> Iterator[Track]:
+    """The track of each quality level of a stream, or none for streams of other types.
+
+    Args:
+        stream: The StreamIndex element.
+        manifest_url: The URL the manifest came from.
+        timescale: The manifest's time units per second, unless the stream gives its own.
+    """
     try:
         stream_type = StreamType(stream.get("Type", ""))
     except ValueError:
@@ -161,12 +208,20 @@ def _tracks(stream: ET.Element, manifest_url: str, timescale: int) -> Iterator[T
 
 
 def _name(stream: ET.Element) -> str:
-    """The name fragment URLs and QuantumStreamer know the stream by."""
+    """The name fragment URLs and QuantumStreamer know the stream by.
+
+    Args:
+        stream: The StreamIndex element.
+    """
     return stream.get("Name") or stream.get("Type") or ""
 
 
 def _timeline(stream: ET.Element) -> tuple[tuple[int, ...], int]:
-    """The start time of each fragment of `stream` and the time the last one ends."""
+    """The start time of each fragment of `stream` and the time the last one ends.
+
+    Args:
+        stream: The StreamIndex element.
+    """
     start_times = []
     time = 0
     for chunk in stream.findall("c"):
@@ -178,7 +233,12 @@ def _timeline(stream: ET.Element) -> tuple[tuple[int, ...], int]:
 
 
 def _resolve(manifest_url: str, path: str) -> str:
-    """The URL of `path` next to the manifest, keeping the manifest's query like the game does."""
+    """The URL of `path` next to the manifest, keeping the manifest's query like the game does.
+
+    Args:
+        manifest_url: The URL the manifest came from.
+        path: The stream's URL, relative to the manifest.
+    """
     url = urljoin(manifest_url, path)
     query = urlsplit(manifest_url).query
     return f"{url}?{query}" if query else url

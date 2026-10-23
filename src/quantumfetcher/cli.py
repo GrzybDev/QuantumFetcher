@@ -64,6 +64,11 @@ EpisodeIds = Annotated[
 
 
 def _default(kind: StreamType) -> str:
+    """The default selectors of a track type, as an option's help shows them.
+
+    Args:
+        kind: The track type.
+    """
     return ",".join(selection.DEFAULTS[kind])
 
 
@@ -73,6 +78,11 @@ Workers = Annotated[int, typer.Option(min=1, help="Requests to make at once.")]
 
 @app.callback()
 def main(context: typer.Context) -> None:
+    """Log the progress of the command to the terminal while it runs.
+
+    Args:
+        context: The command's context.
+    """
     logger = logging.getLogger("quantumfetcher")
     handler = RichHandler(console=_console, show_time=False, show_path=False)
     logger.addHandler(handler)
@@ -80,7 +90,7 @@ def main(context: typer.Context) -> None:
     context.call_on_close(lambda: logger.removeHandler(handler))
 
 
-@app.command(help="Download episodes for QuantumStreamer to play offline.")
+@app.command()
 def download(
     game_dir: GameDir = None,
     videolist_path: VideoListPath = None,
@@ -135,6 +145,7 @@ def download(
         ),
     ] = False,
 ) -> None:
+    """Download episodes for QuantumStreamer to play offline."""
     interactive = not yes and _interactive()
     given = {StreamType.VIDEO: video, StreamType.AUDIO: audio, StreamType.TEXT: text}
     try:
@@ -188,7 +199,7 @@ def download(
         )
 
 
-@app.command(help="List the tracks the episodes offer and the selectors that pick them.")
+@app.command()
 def formats(
     game_dir: GameDir = None,
     videolist_path: VideoListPath = None,
@@ -196,6 +207,7 @@ def formats(
     retries: Retries = DEFAULT_RETRIES,
     workers: Workers = DEFAULT_CONNECTIONS,
 ) -> None:
+    """List the tracks the episodes offer and the selectors that pick them."""
     try:
         videos = videolist.load(_source_videolist(game_dir, videolist_path))
         ids = choice.episode_ids(videos, episodes, interactive=False)
@@ -210,7 +222,7 @@ def formats(
     Console().print(table)
 
 
-@videolist_app.command(help="Print the video list as JSON, or save it to a file.")
+@videolist_app.command()
 def dump(
     game_dir: GameDir = None,
     videolist_path: VideoListPath = None,
@@ -219,6 +231,7 @@ def dump(
         typer.Option("--output", "-o", dir_okay=False, help="JSON file to save to, or - to print."),
     ] = None,
 ) -> None:
+    """Print the video list as JSON, or save it to a file."""
     try:
         videos = videolist.load(_source_videolist(game_dir, videolist_path))
         text = json.dumps(videos, indent=4)
@@ -231,7 +244,7 @@ def dump(
         _fail(error)
 
 
-@videolist_app.command(help="Point the episodes at a QuantumStreamer compatible server.")
+@videolist_app.command()
 def patch(
     game_dir: GameDir = None,
     videolist_path: VideoListPath = None,
@@ -239,6 +252,7 @@ def patch(
         str, typer.Option("--server", "-s", help="Host and port of the server.")
     ] = "127.0.0.1:10000",
 ) -> None:
+    """Point the episodes at a QuantumStreamer compatible server."""
     try:
         path = videolist_path or _game(game_dir, _interactive()).videolist
         videos = videolist.patch(path, server)
@@ -250,10 +264,7 @@ def patch(
     )
 
 
-@videolist_app.command(
-    help="Build the video list from a JSON object of episode IDs and URLs, keeping the first list "
-    "it replaces as a .old file."
-)
+@videolist_app.command()
 def build(
     input_json: Annotated[
         Path,
@@ -269,6 +280,10 @@ def build(
         ),
     ] = None,
 ) -> None:
+    """Build the video list from a JSON object of episode IDs and URLs.
+
+    The first list it replaces is kept as a .old file.
+    """
     try:
         videos = videolist.read_json(input_json)
         path = _source_videolist(game_dir, videolist_path)
@@ -284,6 +299,12 @@ def _interactive() -> bool:
 
 
 def _game(game_dir: Path | None, interactive: bool) -> GameFolder:
+    """The game folder given, or the one asked for when it is left out.
+
+    Args:
+        game_dir: The game folder from the command line, or None.
+        interactive: Whether to ask for the folder when it is left out.
+    """
     if game_dir is None:
         if not interactive:
             # In a terminal, only --yes keeps the folder from being asked for.
@@ -294,10 +315,23 @@ def _game(game_dir: Path | None, interactive: bool) -> GameFolder:
 
 
 def _source_videolist(game_dir: Path | None, path: Path | None) -> Path:
+    """The video list given, else the game's list that holds the episodes' own URLs.
+
+    Args:
+        game_dir: The game folder from the command line, or None.
+        path: The video list from the command line, or None.
+    """
     return path or videolist.unpatched(_game(game_dir, _interactive()).videolist)
 
 
 def _fetch(client: HttpClient, videos: Mapping[str, str], workers: int) -> list[Episode]:
+    """Fetch the episodes' manifests with a progress bar, failing when none can be fetched.
+
+    Args:
+        client: The client to fetch with.
+        videos: The manifest URL of each episode ID.
+        workers: The number of manifests to fetch at once.
+    """
     columns = TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn()
     with Progress(*columns, console=_console, transient=True) as progress:
         task = progress.add_task("Fetching manifests", total=len(videos))
@@ -308,6 +342,14 @@ def _fetch(client: HttpClient, videos: Mapping[str, str], workers: int) -> list[
 
 
 def _flag(given: bool | None, ask: bool, question: str, *, default: bool) -> bool:
+    """The value of a yes or no option: as given, else asked for when `ask` is set, else no.
+
+    Args:
+        given: The value from the command line, or None.
+        ask: Whether to ask when the value is not given.
+        question: The question to ask.
+        default: The answer Enter gives.
+    """
     if given is not None:
         return given
     return prompts.confirm(question, default) if ask else False
@@ -350,6 +392,12 @@ def _progress_task(
 
 
 def _count(items: Sized, noun: str) -> str:
+    """The number of items followed by the noun, in the plural unless there is one.
+
+    Args:
+        items: The items to count.
+        noun: The noun for one item.
+    """
     return f"{len(items)} {noun}{'' if len(items) == 1 else 's'}"
 
 

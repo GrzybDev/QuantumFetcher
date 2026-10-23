@@ -1,5 +1,8 @@
-"""Fragmented MP4 track files as QuantumStreamer reads them: a header describing the track, the
-fragments as the server sent them and an mfra box indexing when and where each fragment starts."""
+"""Fragmented MP4 track files as QuantumStreamer reads them.
+
+A file holds a header describing the track, the fragments as the server sent them and an mfra box
+indexing when and where each fragment starts.
+"""
 
 import re
 import struct
@@ -25,15 +28,34 @@ _HANDLERS = {
 
 
 def box(kind: bytes, *payload: bytes) -> bytes:
+    """An MP4 box holding the pieces of `payload` one after another.
+
+    Args:
+        kind: The four-letter box type.
+        payload: The pieces of its content.
+    """
     content = b"".join(payload)
     return _BOX.pack(_BOX.size + len(content), kind) + content
 
 
 def full_box(kind: bytes, version: int, flags: int, *payload: bytes) -> bytes:
+    """An MP4 full box, whose content starts with its version and flags.
+
+    Args:
+        kind: The four-letter box type.
+        version: The version of the box's layout.
+        flags: The box's 24 bits of flags.
+        payload: The pieces of the content after them.
+    """
     return box(kind, struct.pack(">I", version << 24 | flags), *payload)
 
 
 def boxes(data: bytes | memoryview) -> Iterator[tuple[bytes, memoryview]]:
+    """The type and content of each box in `data`, which must hold whole boxes.
+
+    Args:
+        data: Boxes one after another, such as the content of a box.
+    """
     view = memoryview(data)
     position = 0
     while position < len(view):
@@ -56,7 +78,11 @@ def boxes(data: bytes | memoryview) -> Iterator[tuple[bytes, memoryview]]:
 
 
 def fragment_track_id(fragment: bytes) -> int:
-    """Check that `fragment` is a moof box followed by its mdat box and return its track ID."""
+    """Check that `fragment` is a moof box followed by its mdat box and return its track ID.
+
+    Args:
+        fragment: A fragment as the server sends it.
+    """
     found = list(boxes(fragment))
     if [kind for kind, _ in found] != [b"moof", b"mdat"]:
         raise FetchError("Expected a movie fragment and its media data")
@@ -64,7 +90,12 @@ def fragment_track_id(fragment: bytes) -> int:
 
 
 def track_header(track: Track, track_id: int) -> bytes:
-    """An ftyp and a moov box describing `track`, so that players can open its file."""
+    """An ftyp and a moov box describing `track`, so that players can open its file.
+
+    Args:
+        track: The track the file holds.
+        track_id: The track ID its fragments give.
+    """
     return box(b"ftyp", b"isml", struct.pack(">I", 1), b"piff", b"iso2") + box(
         b"moov",
         full_box(
@@ -86,6 +117,12 @@ def track_header(track: Track, track_id: int) -> bytes:
 
 
 def fragment_index(track_id: int, fragments: Sequence[tuple[int, int]]) -> bytes:
+    """An mfra box indexing when and where each fragment of a track starts.
+
+    Args:
+        track_id: The track ID its fragments give.
+        fragments: The start time and file offset of each fragment.
+    """
     tfra = full_box(
         b"tfra",
         1,
@@ -98,6 +135,11 @@ def fragment_index(track_id: int, fragments: Sequence[tuple[int, int]]) -> bytes
 
 
 def read_fragment_index(file: BinaryIO) -> list[tuple[int, int]]:
+    """The start time and offset of each fragment, from the mfra box that ends a track file.
+
+    Args:
+        file: The track file.
+    """
     end = file.seek(0, SEEK_END)
     file.seek(max(end - _MFRO.size, 0))
     try:
@@ -120,6 +162,11 @@ def read_fragment_index(file: BinaryIO) -> list[tuple[int, int]]:
 
 
 def read_fragments(file: BinaryIO) -> Iterator[tuple[int, bytes]]:
+    """The start time and media data of each fragment of a track file.
+
+    Args:
+        file: The track file.
+    """
     for time, offset in read_fragment_index(file):
         file.seek(offset)
         moof_size = _expect_box(file, b"moof")
@@ -129,9 +176,19 @@ def read_fragments(file: BinaryIO) -> Iterator[tuple[int, bytes]]:
 
 
 class TrackWriter:
-    """Writes a track file one fragment at a time, keeping what an interrupted write left in it."""
+    """Writes a track file one fragment at a time, keeping what an interrupted write left in it.
+
+    Attributes:
+        size: The bytes the file holds so far, the ones kept from an interrupted write included.
+    """
 
     def __init__(self, file: BinaryIO, track: Track) -> None:
+        """Carry on writing `file` after the whole fragments it holds, dropping the rest.
+
+        Args:
+            file: The track file, open for reading and writing.
+            track: The track it holds.
+        """
         self._file = file
         self._track = track
         self._offsets: list[int] = []
@@ -140,9 +197,15 @@ class TrackWriter:
 
     @property
     def fragments(self) -> int:
+        """The number of fragments in the file."""
         return len(self._offsets)
 
     def append(self, fragment: bytes) -> None:
+        """Add a fragment, writing the track's header before the first one.
+
+        Args:
+            fragment: The fragment as the server sent it.
+        """
         track_id = fragment_track_id(fragment)
         if not self._offsets:
             self._track_id = track_id
@@ -151,6 +214,7 @@ class TrackWriter:
         self._write(fragment)
 
     def finish(self) -> None:
+        """Write the fragment index that ends the file, failing unless every fragment is in it."""
         if len(self._offsets) != len(self._track.start_times):
             raise FetchError(
                 f"The file has {len(self._offsets)} fragments "
@@ -234,6 +298,11 @@ def _mdia(track: Track) -> bytes:
 
 
 def _sample_entry(track: Track) -> bytes:
+    """The stsd entry describing the codec of `track`, for the codecs the episodes use.
+
+    Args:
+        track: The track to describe.
+    """
     match track.type, track.fourcc:
         case StreamType.VIDEO, "H264" | "AVC1":
             size = struct.pack(">HH", track.width or 0, track.height or 0)
@@ -293,7 +362,11 @@ def _descriptor(tag: int, *payload: bytes) -> bytes:
 
 
 def _language(code: str | None) -> int:
-    """An ISO 639-2 code as three 5-bit letters, the way mdhd stores it."""
+    """An ISO 639-2 code as three 5-bit letters, the way mdhd stores it.
+
+    Args:
+        code: The track's language; und stands in for a missing or malformed one.
+    """
     if not (code and len(code) == 3 and code.isascii() and code.isalpha() and code.islower()):
         code = "und"
     return reduce(lambda packed, letter: packed << 5 | ord(letter) - 0x60, code, 0)
@@ -304,6 +377,12 @@ def _track_id(moof: memoryview) -> int:
 
 
 def _find(data: bytes | memoryview, *path: bytes) -> memoryview:
+    """The payload of the box at `path`, each box the first of its kind in the one before.
+
+    Args:
+        data: The boxes to start from.
+        path: The box types to descend through.
+    """
     found = memoryview(data)
     for kind in path:
         child = next((payload for name, payload in boxes(found) if name == kind), None)
@@ -314,7 +393,11 @@ def _find(data: bytes | memoryview, *path: bytes) -> memoryview:
 
 
 def _complete_boxes(file: BinaryIO) -> Iterator[tuple[bytes, int, int]]:
-    """Yield the type, offset and size of each top-level box until one is cut off."""
+    """Yield the type, offset and size of each top-level box until one is cut off.
+
+    Args:
+        file: The file to read.
+    """
     end = file.seek(0, SEEK_END)
     offset = 0
     while offset < end:
@@ -335,6 +418,12 @@ def _complete_boxes(file: BinaryIO) -> Iterator[tuple[bytes, int, int]]:
 
 
 def _expect_box(file: BinaryIO, kind: bytes) -> int:
+    """Read the header of the box at the file's position, returning its size.
+
+    Args:
+        file: The file positioned at the box.
+        kind: The box type it must have.
+    """
     header = file.read(_BOX.size)
     if len(header) < _BOX.size or header[4:] != kind:
         raise FetchError(f"Expected a {kind.decode('latin-1')} box")

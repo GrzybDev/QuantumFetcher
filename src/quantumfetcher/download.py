@@ -9,6 +9,12 @@ from quantumfetcher.network import HttpClient
 
 class TrackDownloader:
     def __init__(self, client: HttpClient, workers: int) -> None:
+        """Set up track downloads that fetch the fragments on worker threads.
+
+        Args:
+            client: The client to fetch the fragments with.
+            workers: The number of fragments to fetch at once.
+        """
         self._client = client
         self._workers = workers
 

@@ -1,5 +1,8 @@
-"""SubRip subtitles from the TTML captions of a text track, which QuantumStreamer shows instead of
-the track's own captions when they are saved as <track name>.srt in the episode folder."""
+"""SubRip subtitles from the TTML captions of a text track.
+
+QuantumStreamer shows them instead of the track's own captions when they are saved as
+<track name>.srt in the episode folder.
+"""
 
 import re
 import xml.etree.ElementTree as ET
@@ -30,13 +33,20 @@ _SPLIT_GAP = 0.1
 
 @dataclass(frozen=True)
 class Cue:
+    """A caption, timed in seconds from the start of the episode."""
+
     start: float
     end: float
     text: str
 
 
 def read_cues(path: Path, timescale: int) -> list[Cue]:
-    """The captions of every fragment of a downloaded text track, timed from the episode start."""
+    """The captions of every fragment of a downloaded text track, timed from the episode start.
+
+    Args:
+        path: The track file.
+        timescale: The track's time units per second.
+    """
     with path.open("rb") as file:
         return [
             cue
@@ -46,7 +56,12 @@ def read_cues(path: Path, timescale: int) -> list[Cue]:
 
 
 def parse_ttml(document: bytes, offset: float) -> Iterator[Cue]:
-    """The paragraphs of a TTML document, with times relative to `offset` seconds."""
+    """The paragraphs of a TTML document, with times relative to `offset` seconds.
+
+    Args:
+        document: The captions of one fragment.
+        offset: The seconds to add to its times, such as its fragment's start.
+    """
     try:
         root = ET.fromstring(document)
     except ET.ParseError as error:
@@ -59,7 +74,11 @@ def parse_ttml(document: bytes, offset: float) -> Iterator[Cue]:
 
 
 def episode_title(episode_id: str) -> Cue | None:
-    """A cue with the title of the episode `episode_id` belongs to, such as J1A to episode 1."""
+    """A cue with the title of the episode a video belongs to, or None for unknown episodes.
+
+    Args:
+        episode_id: The video's ID in the video list, such as J1A for a part of episode 1.
+    """
     match = _EPISODE_NUMBER.match(episode_id)
     if match is None or (title := EPISODE_TITLES.get(int(match[1]))) is None:
         return None
@@ -67,7 +86,11 @@ def episode_title(episode_id: str) -> Cue | None:
 
 
 def to_srt(cues: Iterable[Cue]) -> str:
-    """SubRip subtitles of the non-empty cues in time order, joining the pieces of split ones."""
+    """SubRip subtitles of the non-empty cues in time order, joining the pieces of split ones.
+
+    Args:
+        cues: The captions to save.
+    """
     merged: list[Cue] = []
     for cue in sorted(cues, key=lambda cue: cue.start):
         if not cue.text.strip():
@@ -92,7 +115,11 @@ def _seconds(time: str) -> float:
 
 
 def _text(paragraph: ET.Element) -> str:
-    """The text of a paragraph, with its line breaks but not the source's own formatting."""
+    """The text of a paragraph, with its line breaks but not the source's own formatting.
+
+    Args:
+        paragraph: The p element.
+    """
 
     def flatten(element: ET.Element) -> Iterator[str]:
         yield _unwrap(element.text)
@@ -104,6 +131,11 @@ def _text(paragraph: ET.Element) -> str:
 
 
 def _unwrap(text: str | None) -> str:
+    """A text or tail without the line breaks of the source's formatting, empty for None.
+
+    Args:
+        text: The text or tail of an element.
+    """
     return (text or "").replace("\r", "").replace("\n", "")
 
 
