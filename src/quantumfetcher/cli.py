@@ -1,7 +1,9 @@
 import json
 import logging
 import sys
-from collections.abc import Mapping, Sequence, Sized
+from collections.abc import Callable, Iterator, Mapping, Sequence, Sized
+from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
 from typing import Annotated, NoReturn
 
@@ -168,7 +170,7 @@ def download(
                 failed = EpisodeDownloader(
                     TrackDownloader(client, workers),
                     episodes_path,
-                    progress,
+                    partial(_progress_task, progress),
                     extract_subtitles=extract,
                     episode_title=title,
                 ).download_all(plan)
@@ -302,7 +304,8 @@ def _episode_ids(videos: Mapping[str, str], value: str | None, interactive: bool
 def _fetch(client: HttpClient, videos: Mapping[str, str], workers: int) -> list[Episode]:
     columns = TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn()
     with Progress(*columns, console=_console, transient=True) as progress:
-        episodes = fetch_episodes(client, videos, workers, progress)
+        task = progress.add_task("Fetching manifests", total=len(videos))
+        episodes = fetch_episodes(client, videos, workers, partial(progress.advance, task))
     if not episodes:
         raise FetchError("No episode could be fetched")
     return episodes
@@ -375,6 +378,24 @@ def _transfer_progress() -> Progress:
         TimeRemainingColumn(),
         console=_console,
     )
+
+
+@contextmanager
+def _progress_task(
+    progress: Progress, description: str, total: int | None
+) -> Iterator[Callable[[int], None]]:
+    """Show a download in `progress` while the context lasts, giving the call that advances it.
+
+    Args:
+        progress: The display to show it in.
+        description: The download's label.
+        total: The bytes it is expected to take, or None when unknown.
+    """
+    task = progress.add_task(description, total=total)
+    try:
+        yield partial(progress.advance, task)
+    finally:
+        progress.remove_task(task)
 
 
 def _count(items: Sized, noun: str) -> str:

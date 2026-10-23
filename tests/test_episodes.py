@@ -1,8 +1,8 @@
 from collections.abc import Sequence
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
-from rich.progress import Progress
 
 from quantumfetcher import selection
 from quantumfetcher.download import TrackDownloader
@@ -28,8 +28,13 @@ def download(
     plan: Sequence[tuple[Episode, Sequence[Track]]],
     **options: bool,
 ) -> list[str]:
-    downloader = TrackDownloader(client, 2)
-    return EpisodeDownloader(downloader, root, Progress(disable=True), **options).download_all(plan)
+    downloader = EpisodeDownloader(
+        TrackDownloader(client, 2),
+        root,
+        lambda label, total: nullcontext(lambda size: None),
+        **options,
+    )
+    return downloader.download_all(plan)
 
 
 def test_saves_tracks_with_manifests_quantumstreamer_plays_offline(

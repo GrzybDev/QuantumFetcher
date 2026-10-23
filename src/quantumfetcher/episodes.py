@@ -1,11 +1,9 @@
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-
-from rich.filesize import decimal
-from rich.progress import Progress
 
 from quantumfetcher import subtitles
 from quantumfetcher.concurrency import results_in_order
@@ -53,7 +51,7 @@ class EpisodeFolder:
 
 
 def fetch_episodes(
-    client: HttpClient, videos: Mapping[str, str], workers: int, progress: Progress
+    client: HttpClient, videos: Mapping[str, str], workers: int, progress: Callable[[], None]
 ) -> list[Episode]:
     """Fetch the episodes' manifests, skipping with a warning each one that cannot be fetched.
 
@@ -61,12 +59,11 @@ def fetch_episodes(
         client: The client to fetch with.
         videos: The manifest URL of each episode ID.
         workers: The number of manifests to fetch at once.
-        progress: The progress display to show a task on.
+        progress: Called once each manifest is fetched or skipped.
 
     Returns:
         The episodes whose manifests were fetched, in the order of `videos`.
     """
-    task = progress.add_task("Fetching manifests", total=len(videos))
     episodes = []
     fetch = partial(_fetch_manifest, client)
     with results_in_order(fetch, videos.values(), workers) as manifests:
@@ -75,7 +72,7 @@ def fetch_episodes(
                 log.warning("Skipping %s: %s", episode_id, manifest)
             else:
                 episodes.append(Episode(episode_id, manifest))
-            progress.advance(task)
+            progress()
     return episodes
 
 
@@ -84,11 +81,21 @@ class EpisodeDownloader:
         self,
         downloader: TrackDownloader,
         root: Path,
-        progress: Progress,
+        progress: Callable[[str, int | None], AbstractContextManager[Callable[[int], None]]],
         *,
         extract_subtitles: bool = False,
         episode_title: bool = False,
     ) -> None:
+        """Save episodes in the folders QuantumStreamer reads them from.
+
+        Args:
+            downloader: The downloader of each track.
+            root: The folder holding a folder for each episode.
+            progress: Given a track's label and estimated size, a context to show its download
+                in, which gives the call that adds the bytes each step downloads.
+            extract_subtitles: Whether to save the captions downloaded as SubRip files.
+            episode_title: Whether to end the saved subtitles with the episode title.
+        """
         self._downloader = downloader
         self._root = root
         self._progress = progress
@@ -130,12 +137,9 @@ class EpisodeDownloader:
         if path.exists():
             log.info("Keeping %s", path.name)
             return
-        task = self._progress.add_task(label, total=track.estimated_size)
-        try:
-            self._downloader.download(track, path, partial(self._progress.advance, task))
-        finally:
-            self._progress.remove_task(task)
-        log.info("Downloaded %s (%s)", path.name, decimal(path.stat().st_size))
+        with self._progress(label, track.estimated_size) as advance:
+            self._downloader.download(track, path, advance)
+        log.info("Downloaded %s", path.name)
 
     def _write_manifests(
         self, episode: Episode, tracks: Sequence[Track], folder: EpisodeFolder
