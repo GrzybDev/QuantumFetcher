@@ -12,6 +12,7 @@ jobs:
   checks:
     uses: GrzybDev/actions/.github/workflows/python-checks.yml@v1
     with:
+      test-command: pytest
       mypy: true
 
   build:

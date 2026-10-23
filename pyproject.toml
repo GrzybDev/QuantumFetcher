@@ -31,6 +31,8 @@ quantumfetcher = "quantumfetcher.cli:app"
 [dependency-groups]
 dev = [
     "mypy>=2.4.0",
+    "prompt-toolkit>=3.0.53",
+    "pytest>=9.1.1",
     "ruff>=0.17.2",
 ]
 
@@ -41,6 +43,12 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF"]
 
+[tool.pytest]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = ["--import-mode=importlib"]
+strict = true
+
 [tool.mypy]
 strict = true
-files = ["src"]
+files = ["src", "tests"]

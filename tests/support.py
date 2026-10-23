@@ -1,7 +1,11 @@
+import re
 import struct
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
+from pathlib import Path
 
 from quantumfetcher.errors import FetchError
+from quantumfetcher.network import HttpClient
 
 MANIFEST_URL = "http://cdn.test/quantum/J1A.ism/manifest?tkn=secret"
 CHUNK = 20_000_000
@@ -11,6 +15,7 @@ VIDEO = {2_000_000: (1280, 720), 500_000: (640, 360)}
 AUDIO = {"enus": "eng", "esmx": "spa"}
 TEXT = {"enus_captions": "eng", "eses_captions": "spa"}
 KEY = bytes.fromhex("ba7abb27039b72fd13eb70387e0fcb41e1d0eb54be8f136df0bae22adcfb40f1")
+SMIL = "{http://www.w3.org/2001/SMIL20/Language}"
 
 
 def encrypt(data: bytes) -> bytes:
@@ -99,10 +104,75 @@ def episode_responses(chunks: int = 3) -> dict[str, bytes]:
     return responses
 
 
-class FakeClient:
-    """Stands in for HttpClient, answering from URLs mapped to bodies or errors."""
+def quantumstreamer_index(data: bytes) -> dict[str, int]:
+    """The offset of each fragment by its time, read the way QuantumStreamer's preloadTrack does.
+
+    Args:
+        data: A whole track file.
+    """
+    mfro_size = int.from_bytes(data[-4:])
+    mfra = data[-mfro_size:]
+    assert int.from_bytes(mfra[:4]) == mfro_size and mfra[4:8] == b"mfra"
+    assert mfra[12:16] == b"tfra"
+    version, (sizes, count) = mfra[16], struct.unpack(">II", mfra[24:32])
+    entry = ">QQ" if version == 1 else ">II"
+    numbers = ((sizes & 0x3F) >> 4) + ((sizes & 0xC) >> 2) + (sizes & 0x3) + 3
+    position = 32
+    index: dict[str, int] = {}
+    for _ in range(count):
+        time, offset = struct.unpack_from(entry, mfra, position)
+        position += struct.calcsize(entry) + numbers
+        index[str(time)] = offset
+    return index
+
+
+def served_locally(folder: Path) -> tuple[int, int]:
+    """Replay QuantumStreamer's lookups for the fragments an episode folder's manifests offer.
+
+    Args:
+        folder: The episode folder.
+
+    Returns:
+        The number of fragment requests it would serve from the folder's files and the number
+        it would fetch from the server.
+    """
+    (ism,) = folder.glob("*.ism")
+    root = ET.parse(ism).getroot()
+    (meta,) = root.findall(f"{SMIL}head/{SMIL}meta[@name='clientManifestRelativePath']")
+    media: dict[str, dict[str, int]] = {}
+    for tag in ("video", "audio", "textstream"):
+        for element in root.iter(f"{SMIL}{tag}"):
+            name = "video"
+            if tag != "video":
+                (param,) = element.findall(f"{SMIL}param[@name='trackName']")
+                name = param.attrib["value"]
+            index = quantumstreamer_index((folder / element.attrib["src"]).read_bytes())
+            media[f"{name}_{element.attrib['systemBitrate']}"] = index
+    served = fetched = 0
+    for stream in ET.parse(folder / meta.attrib["content"]).getroot().findall("StreamIndex"):
+        (name,) = re.findall(r"Fragments\((\w+)=", stream.attrib["Url"])
+        times: list[int] = []
+        time = 0
+        for chunk in stream.findall("c"):
+            times.append(time)
+            time += int(chunk.attrib["d"])
+        for level in stream.findall("QualityLevel"):
+            index = media.get(f"{name}_{level.attrib['Bitrate']}", {})
+            served += sum(str(time) in index for time in times)
+            fetched += sum(str(time) not in index for time in times)
+    return served, fetched
+
+
+class FakeClient(HttpClient):
+    """An HttpClient answering from URLs mapped to bodies or errors instead of the network."""
 
     def __init__(self, responses: Mapping[str, bytes | Exception]) -> None:
+        """Answer with `responses`, and like a server without the file for other URLs.
+
+        Args:
+            responses: The body or error for each URL.
+        """
+        super().__init__()
         self.responses = dict(responses)
         self.requests: list[str] = []
 
