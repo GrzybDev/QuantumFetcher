@@ -1,9 +1,11 @@
+import re
 import threading
 from collections.abc import Iterator
 from unittest.mock import Mock
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
 
 from quantumfetcher.errors import FetchError
 from quantumfetcher.network import HttpClient
@@ -52,6 +54,17 @@ def test_gives_up_after_the_retries(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_does_not_retry_what_will_not_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(FetchError, match="404"):
         fetch(monkeypatch, response(404), response(200))
+
+
+def test_names_itself_with_its_version_and_system(monkeypatch: pytest.MonkeyPatch) -> None:
+    send = Mock(return_value=response(200, b"data"))
+    monkeypatch.setattr(HTTPAdapter, "send", send)
+    with HttpClient() as client:
+        client.get(URL)
+    sent: requests.PreparedRequest = send.call_args.args[0]
+    user_agent = sent.headers["User-Agent"]
+    assert isinstance(user_agent, str)
+    assert re.fullmatch(r"QuantumFetcher/\d+\.\d+\.\d+ \(\w+\)", user_agent)
 
 
 def test_stops_a_download_under_way_once_closed(monkeypatch: pytest.MonkeyPatch) -> None:

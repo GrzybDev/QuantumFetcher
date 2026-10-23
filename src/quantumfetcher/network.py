@@ -1,4 +1,6 @@
+import platform
 import threading
+from importlib.metadata import version
 from types import TracebackType
 from typing import Self
 
@@ -7,8 +9,7 @@ from requests.adapters import HTTPAdapter
 
 from quantumfetcher.errors import FetchError
 
-# What the game's own streaming client calls itself.
-USER_AGENT = "Malibu/1.0"
+USER_AGENT = f"QuantumFetcher/{version('quantumfetcher')} ({platform.system()})"
 
 _TRANSIENT_STATUSES = {408, 429, 500, 502, 503, 504}
 _MAX_BACKOFF_SECONDS = 30
