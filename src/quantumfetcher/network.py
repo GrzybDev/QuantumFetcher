@@ -10,6 +10,8 @@ from requests.adapters import HTTPAdapter
 from quantumfetcher.errors import FetchError
 
 USER_AGENT = f"QuantumFetcher/{version('quantumfetcher')} ({platform.system()})"
+DEFAULT_RETRIES = 10
+DEFAULT_CONNECTIONS = 8
 
 _TRANSIENT_STATUSES = {408, 429, 500, 502, 503, 504}
 _MAX_BACKOFF_SECONDS = 30
@@ -19,7 +21,19 @@ _CHUNK_SIZE = 64 * 1024
 class HttpClient:
     """Retries failures that may pass, until it is closed."""
 
-    def __init__(self, retries: int = 10, connections: int = 8, timeout: float = 30) -> None:
+    def __init__(
+        self,
+        retries: int = DEFAULT_RETRIES,
+        connections: int = DEFAULT_CONNECTIONS,
+        timeout: float = 30,
+    ) -> None:
+        """Set up the session the requests share, which sends QuantumFetcher's User-Agent.
+
+        Args:
+            retries: The times to retry a request that failed in a way that may pass.
+            connections: The number of connections to keep open, one for each request at once.
+            timeout: The seconds to wait for the server to connect or send more data.
+        """
         self._retries = retries
         self._timeout = timeout
         self._closed = threading.Event()

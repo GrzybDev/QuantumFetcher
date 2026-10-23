@@ -28,7 +28,7 @@ from quantumfetcher.episodes import Episode, EpisodeDownloader, fetch_episodes
 from quantumfetcher.errors import FetchError
 from quantumfetcher.game import GameFolder
 from quantumfetcher.manifest import StreamType, Track
-from quantumfetcher.network import HttpClient
+from quantumfetcher.network import DEFAULT_CONNECTIONS, DEFAULT_RETRIES, HttpClient
 
 app = typer.Typer(
     help="Fetch Quantum Break's live action episodes for offline in-game playback.",
@@ -126,8 +126,8 @@ def download(
         bool | None,
         typer.Option(show_default=False, help="Add the episode title to the saved subtitles."),
     ] = None,
-    retries: Retries = 10,
-    workers: Workers = 8,
+    retries: Retries = DEFAULT_RETRIES,
+    workers: Workers = DEFAULT_CONNECTIONS,
     yes: Annotated[
         bool,
         typer.Option(
@@ -186,8 +186,8 @@ def formats(
     game_dir: GameDir = None,
     videolist_path: VideoListPath = None,
     episodes: EpisodeIds = None,
-    retries: Retries = 10,
-    workers: Workers = 8,
+    retries: Retries = DEFAULT_RETRIES,
+    workers: Workers = DEFAULT_CONNECTIONS,
 ) -> None:
     try:
         videos = videolist.load(_source_videolist(game_dir, videolist_path))
