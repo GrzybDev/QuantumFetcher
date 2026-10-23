@@ -281,7 +281,9 @@ def _interactive() -> bool:
 def _game(game_dir: Path | None, interactive: bool) -> GameFolder:
     if game_dir is None:
         if not interactive:
-            raise FetchError("Give the game folder")
+            # In a terminal, only --yes keeps the folder from being asked for.
+            reason = "with --yes" if _interactive() else "without a terminal"
+            raise FetchError(f"No game folder given, and none is asked for {reason}")
         game_dir = prompts.folder("Game folder")
     return GameFolder(game_dir)
 

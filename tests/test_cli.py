@@ -129,10 +129,24 @@ def test_rejects_what_matches_nothing(
     assert error in result.output
 
 
-def test_needs_the_game_folder_unless_both_paths_are_given(run: Run, game: GameFolder) -> None:
-    result = run("download", "-e", "J1A", "-y")
+@pytest.mark.parametrize(
+    ("arguments", "terminal", "reason"),
+    [
+        (["download", "-e", "J1A", "-y"], True, "with --yes"),
+        (["download", "-e", "J1A"], False, "without a terminal"),
+        (["videolist", "dump"], False, "without a terminal"),
+    ],
+)
+def test_says_why_the_game_folder_left_out_is_not_asked_for(
+    run: Run, monkeypatch: pytest.MonkeyPatch, arguments: list[str], terminal: bool, reason: str
+) -> None:
+    monkeypatch.setattr(cli, "_interactive", lambda: terminal)
+    result = run(*arguments)
     assert result.exit_code == 1, result.output
-    assert "Error: Give the game folder" in result.output
+    assert f"Error: No game folder given, and none is asked for {reason}" in result.output
+
+
+def test_needs_no_game_folder_when_both_paths_are_given(run: Run, game: GameFolder) -> None:
     output = game.root / "elsewhere"
     result = run(
         "download", "--videolist-path", game.videolist, "--episodes-path", output,
