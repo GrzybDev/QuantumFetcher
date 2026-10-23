@@ -1,5 +1,6 @@
 """The episodes and tracks to download, as the command line names them or a terminal picks them."""
 
+import logging
 from collections.abc import Mapping, Sequence
 
 from rich.filesize import decimal
@@ -8,6 +9,8 @@ from quantumfetcher import prompts, selection
 from quantumfetcher.episodes import Episode
 from quantumfetcher.errors import FetchError
 from quantumfetcher.manifest import StreamType, Track
+
+log = logging.getLogger(__name__)
 
 
 def episode_ids(videos: Mapping[str, str], value: str | None, interactive: bool) -> list[str]:
@@ -70,7 +73,7 @@ def selectors(
 def plan(
     episodes: Sequence[Episode], chosen: Mapping[StreamType, Sequence[str]]
 ) -> list[tuple[Episode, list[Track]]]:
-    """Pair each episode with the tracks the chosen selectors pick in it.
+    """Pick the tracks of each episode, leaving out the episodes the selectors pick none in.
 
     Args:
         episodes: The episodes to download.
@@ -79,7 +82,10 @@ def plan(
     planned = [(episode, _tracks(episode, chosen)) for episode in episodes]
     if not any(tracks for _, tracks in planned):
         raise FetchError("The selectors pick no tracks to download")
-    return planned
+    for episode, tracks in planned:
+        if not tracks:
+            log.info("Skipping %s, as the selectors pick none of its tracks", episode.id)
+    return [(episode, tracks) for episode, tracks in planned if tracks]
 
 
 def _label(option: selection.Option, episodes: int) -> str:

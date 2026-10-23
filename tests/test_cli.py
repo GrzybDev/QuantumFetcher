@@ -8,7 +8,7 @@ from typer.testing import CliRunner, Result
 from quantumfetcher import cli, prompts, videolist
 from quantumfetcher.game import GameFolder
 from quantumfetcher.network import HttpClient
-from support import MANIFEST_URL, FakeClient, episode_responses, files
+from support import MANIFEST_URL, FakeClient, client_manifest, episode_responses, files
 
 MISSING_URL = "http://cdn.test/J2A.ism/manifest"
 
@@ -41,7 +41,9 @@ def run(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> Run:
 def test_downloads_the_default_tracks_of_the_episodes_given(run: Run, game: GameFolder) -> None:
     result = run("download", game.root, "--episodes", "j1a", "--yes")
     assert result.exit_code == 0, result.output
-    assert f"Downloaded 1 episode to {game.episodes}" in result.output
+    assert (
+        f"Saved 3 tracks to {game.episodes}, with 1 of 1 episode playable offline" in result.output
+    )
     assert files(game.episodes / "J1A") == [
         "J1A.ism",
         "J1A.ismc",
@@ -68,13 +70,33 @@ def test_extracts_subtitles_when_asked(run: Run, game: GameFolder) -> None:
     assert result.exit_code == 0, result.output
     srt = (game.episodes / "J1A" / "enus_captions.srt").read_text(encoding="utf-8")
     assert "EPISODE 1: Monarch Solutions" in srt
+    assert "Saved 1 track to" in result.output
+    assert "with 0 of 1 episode playable offline" in result.output
 
 
 def test_skips_episodes_whose_manifest_is_unavailable(run: Run, game: GameFolder) -> None:
     result = run("download", game.root, "-e", "all", "--video", "500000", "-y")
     assert result.exit_code == 0, result.output
     assert "Skipping J2A" in result.output
-    assert "Downloaded 1 episode" in result.output
+    assert "with 1 of 1 episode playable offline" in result.output
+
+
+def test_skips_episodes_the_selectors_pick_no_track_of(
+    run: Run, game: GameFolder, client: FakeClient
+) -> None:
+    other = "http://cdn.test/J3A.ism/manifest"
+    client.responses[other] = (
+        client_manifest().replace(b'"esmx"', b'"frfr"').replace(b'"500000"', b'"400000"')
+    )
+    videolist.save(game.videolist, {"J1A": MANIFEST_URL, "J3A": other})
+    result = run(
+        "download", game.root, "-e", "all", "--video", "500000", "--audio", "esmx", "--text", "none"
+    )
+    assert result.exit_code == 0, result.output
+    assert "Skipping J3A" in result.output
+    assert files(game.episodes) == ["J1A"]
+    assert "Saved 2 tracks to" in result.output
+    assert "with 1 of 1 episode playable offline" in result.output
 
 
 def test_fails_when_an_episode_cannot_be_downloaded(

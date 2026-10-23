@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
 
@@ -48,6 +48,21 @@ class EpisodeFolder:
 
     def subtitles(self, track: Track) -> Path:
         return self.path / f"{track.name}.srt"
+
+
+@dataclass
+class DownloadSummary:
+    """What downloading episodes did.
+
+    Attributes:
+        saved: The track files saved.
+        offline: The IDs of the episodes QuantumStreamer plays offline.
+        failed: The IDs of the episodes that failed.
+    """
+
+    saved: list[Path] = field(default_factory=list)
+    offline: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
 
 
 def fetch_episodes(
@@ -102,28 +117,47 @@ class EpisodeDownloader:
         self._extract_subtitles = extract_subtitles
         self._episode_title = episode_title
 
-    def download_all(self, plan: Sequence[tuple[Episode, Sequence[Track]]]) -> list[str]:
-        """Download each episode's tracks, returning the IDs of the episodes that failed."""
-        failed = []
+    def download_all(self, plan: Sequence[tuple[Episode, Sequence[Track]]]) -> DownloadSummary:
+        """Download the tracks of each episode, carrying on after an episode that fails.
+
+        Args:
+            plan: Each episode with the tracks of it to download.
+
+        Returns:
+            The track files saved and the episodes playable offline or failed.
+        """
+        summary = DownloadSummary()
         for number, (episode, tracks) in enumerate(plan, 1):
             log.info("Episode %s (%d of %d)", episode.id, number, len(plan))
             try:
-                self.download(episode, tracks)
+                self._download(episode, tracks, summary)
             except (FetchError, OSError) as error:
                 log.error("Could not download %s: %s", episode.id, error)
-                failed.append(episode.id)
-        return failed
+                summary.failed.append(episode.id)
+        return summary
 
-    def download(self, episode: Episode, tracks: Sequence[Track]) -> None:
+    def _download(
+        self, episode: Episode, tracks: Sequence[Track], summary: DownloadSummary
+    ) -> None:
+        """Save an episode's tracks, manifests and subtitles, adding what it did to `summary`.
+
+        Args:
+            episode: The episode to save.
+            tracks: The tracks of it to download.
+            summary: The summary of the downloads so far.
+        """
         folder = EpisodeFolder(self._root, episode.id)
         folder.path.mkdir(parents=True, exist_ok=True)
         for track in tracks:
-            self._download_track(f"{episode.id} {track.label}", track, folder.track(track))
+            path = folder.track(track)
+            if self._download_track(f"{episode.id} {track.label}", track, path):
+                summary.saved.append(path)
         # The manifests offer every track in the folder, also those of earlier downloads, and
         # replace the server's, so they need something to play.
         present = [track for track in episode.manifest.tracks if folder.track(track).exists()]
         if {StreamType.VIDEO, StreamType.AUDIO} <= {track.type for track in present}:
             self._write_manifests(episode, present, folder)
+            summary.offline.append(episode.id)
         else:
             log.info(
                 "Leaving %s to stream, as playing it offline needs video and audio", episode.id
@@ -133,13 +167,21 @@ class EpisodeDownloader:
                 if track.type is StreamType.TEXT:
                     self._save_subtitles(episode, track, folder)
 
-    def _download_track(self, label: str, track: Track, path: Path) -> None:
+    def _download_track(self, label: str, track: Track, path: Path) -> bool:
+        """Download a track unless its file exists, returning whether it did.
+
+        Args:
+            label: The track's name in the progress display.
+            track: The track to download.
+            path: The file to save it to.
+        """
         if path.exists():
             log.info("Keeping %s", path.name)
-            return
+            return False
         with self._progress(label, track.estimated_size) as advance:
             self._downloader.download(track, path, advance)
         log.info("Downloaded %s", path.name)
+        return True
 
     def _write_manifests(
         self, episode: Episode, tracks: Sequence[Track], folder: EpisodeFolder

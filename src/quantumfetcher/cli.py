@@ -166,7 +166,7 @@ def download(
             )
             _log_plan(plan)
             with _transfer_progress() as progress:
-                failed = EpisodeDownloader(
+                summary = EpisodeDownloader(
                     TrackDownloader(client, workers),
                     episodes_path,
                     partial(_progress_task, progress),
@@ -175,9 +175,12 @@ def download(
                 ).download_all(plan)
     except (FetchError, OSError) as error:
         _fail(error)
-    if failed:
+    if failed := summary.failed:
         _fail(f"Could not download {len(failed)} of {_count(plan, 'episode')}: {', '.join(failed)}")
-    typer.echo(f"Downloaded {_count(plan, 'episode')} to {episodes_path}")
+    typer.echo(
+        f"Saved {_count(summary.saved, 'track')} to {episodes_path}, "
+        f"with {len(summary.offline)} of {_count(plan, 'episode')} playable offline"
+    )
 
 
 @app.command(help="List the tracks the episodes offer and the selectors that pick them.")

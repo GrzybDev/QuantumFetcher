@@ -6,7 +6,7 @@ import pytest
 
 from quantumfetcher import selection
 from quantumfetcher.download import TrackDownloader
-from quantumfetcher.episodes import Episode, EpisodeDownloader
+from quantumfetcher.episodes import DownloadSummary, Episode, EpisodeDownloader
 from quantumfetcher.manifest import Track
 from support import FakeClient, episode_manifest, episode_responses, files, served_locally
 
@@ -27,7 +27,7 @@ def download(
     root: Path,
     plan: Sequence[tuple[Episode, Sequence[Track]]],
     **options: bool,
-) -> list[str]:
+) -> DownloadSummary:
     downloader = EpisodeDownloader(
         TrackDownloader(client, 2),
         root,
@@ -40,7 +40,8 @@ def download(
 def test_saves_tracks_with_manifests_quantumstreamer_plays_offline(
     client: FakeClient, tmp_path: Path
 ) -> None:
-    assert download(client, tmp_path, [(EPISODE, tracks("500000", "esmx", "enus_captions"))]) == []
+    summary = download(client, tmp_path, [(EPISODE, tracks("500000", "esmx", "enus_captions"))])
+    assert (summary.offline, summary.failed) == (["J1A"], [])
     assert files(tmp_path / "J1A") == [
         "J1A.ism",
         "J1A.ismc",
@@ -74,17 +75,19 @@ def test_moves_aside_server_manifests_quantumstreamer_could_use_instead(
 def test_leaves_episodes_without_video_and_audio_to_stream(
     client: FakeClient, tmp_path: Path
 ) -> None:
-    download(client, tmp_path, [(EPISODE, tracks("enus_captions", "esmx"))])
+    summary = download(client, tmp_path, [(EPISODE, tracks("enus_captions", "esmx"))])
     assert files(tmp_path / "J1A") == ["J1A_enus_captions_256000.ismt", "J1A_esmx_256000.isma"]
+    assert summary.offline == []
 
 
 def test_keeps_tracks_already_downloaded(client: FakeClient, tmp_path: Path) -> None:
     folder = tmp_path / "J1A"
     folder.mkdir()
     (folder / "J1A_esmx_256000.isma").write_bytes(b"kept")
-    download(client, tmp_path, [(EPISODE, tracks("esmx", "enus_captions"))])
+    summary = download(client, tmp_path, [(EPISODE, tracks("esmx", "enus_captions"))])
     assert (folder / "J1A_esmx_256000.isma").read_bytes() == b"kept"
     assert not any("esmx" in url for url in client.requests)
+    assert summary.saved == [folder / "J1A_enus_captions_256000.ismt"]
 
 
 def test_saves_subtitles_with_the_episode_title(client: FakeClient, tmp_path: Path) -> None:
@@ -116,7 +119,7 @@ def test_reports_the_episodes_that_fail_and_carries_on(
 ) -> None:
     del client.responses[tracks("2000000")[0].fragment_url(0)]
     plan = [(Episode("J1B", EPISODE.manifest), tracks("best")), (EPISODE, tracks("500000"))]
-    assert download(client, tmp_path, plan) == ["J1B"]
+    assert download(client, tmp_path, plan).failed == ["J1B"]
     assert "Could not download J1B: 404" in caplog.text
     assert "J1A_video_500000.ismv" in files(tmp_path / "J1A")
     assert "J1B_video_2000000.ismv.part" in files(tmp_path / "J1B")
