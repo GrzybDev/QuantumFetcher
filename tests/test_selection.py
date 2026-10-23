@@ -14,10 +14,6 @@ def keys(tracks: Iterable[Track]) -> list[tuple[str, int]]:
     return [(track.name, track.bitrate) for track in tracks]
 
 
-def of_type(kind: StreamType, tracks: Iterable[Track] = TRACKS) -> list[Track]:
-    return [track for track in tracks if track.type is kind]
-
-
 @pytest.mark.parametrize(
     ("kind", "selectors", "expected"),
     [
@@ -37,11 +33,11 @@ def of_type(kind: StreamType, tracks: Iterable[Track] = TRACKS) -> list[Track]:
 def test_selectors_pick_tracks_by_what_names_them(
     kind: StreamType, selectors: list[str], expected: list[tuple[str, int]]
 ) -> None:
-    assert keys(selection.select(of_type(kind), selectors)) == expected
+    assert keys(selection.select(selection.of_type(TRACKS, kind), selectors)) == expected
 
 
 def test_unknown_lists_the_selectors_that_pick_nothing() -> None:
-    audio = of_type(StreamType.AUDIO)
+    audio = selection.of_type(TRACKS, StreamType.AUDIO)
     assert selection.unknown(["enus", "best", "None", "pl", "720p"], audio) == ["pl", "720p"]
 
 
@@ -72,6 +68,7 @@ def test_defaults_name_the_options_picked_in_each_episode() -> None:
     assert selection.defaults(StreamType.AUDIO, episodes) == {"enus"}
     assert selection.defaults(StreamType.TEXT, episodes) == {"enus_captions"}
     best = [
-        keys(selection.select(of_type(StreamType.VIDEO, tracks), ["best"])) for tracks in episodes
+        keys(selection.select(selection.of_type(tracks, StreamType.VIDEO), ["best"]))
+        for tracks in episodes
     ]
     assert best == [[("video", 2_000_000)], [("video", 500_000)]]

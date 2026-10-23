@@ -22,7 +22,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from quantumfetcher import prompts, selection, videolist
+from quantumfetcher import choice, prompts, selection, videolist
 from quantumfetcher.download import TrackDownloader
 from quantumfetcher.episodes import Episode, EpisodeDownloader, fetch_episodes
 from quantumfetcher.errors import FetchError
@@ -143,15 +143,14 @@ def download(
             videolist_path = videolist_path or videolist.unpatched(game.videolist)
             episodes_path = episodes_path or game.episodes
         videos = videolist.load(videolist_path)
-        ids = _episode_ids(videos, episodes, interactive)
+        ids = choice.episode_ids(videos, episodes, interactive)
         with HttpClient(retries, workers) as client:
             loaded = _fetch(client, {episode: videos[episode] for episode in ids}, workers)
             chosen = {
-                kind: _selectors(kind, given[kind], loaded, interactive) for kind in StreamType
+                kind: choice.selectors(kind, given[kind], loaded, interactive)
+                for kind in StreamType
             }
-            plan = [(episode, _tracks(episode, chosen)) for episode in loaded]
-            if not any(tracks for _, tracks in plan):
-                raise FetchError("The selectors pick no tracks to download")
+            plan = choice.plan(loaded, chosen)
             with_text = any(track.type is StreamType.TEXT for _, tracks in plan for track in tracks)
             extract = _flag(
                 extract_subtitles,
@@ -191,7 +190,7 @@ def formats(
 ) -> None:
     try:
         videos = videolist.load(_source_videolist(game_dir, videolist_path))
-        ids = _episode_ids(videos, episodes, interactive=False)
+        ids = choice.episode_ids(videos, episodes, interactive=False)
         with HttpClient(retries, workers) as client:
             loaded = _fetch(client, {episode: videos[episode] for episode in ids}, workers)
     except (FetchError, OSError) as error:
@@ -285,22 +284,6 @@ def _source_videolist(game_dir: Path | None, path: Path | None) -> Path:
     return path or videolist.unpatched(_game(game_dir, _interactive()).videolist)
 
 
-def _episode_ids(videos: Mapping[str, str], value: str | None, interactive: bool) -> list[str]:
-    if value is None:
-        if not interactive:
-            return list(videos)
-        if picked := prompts.checkbox("Episodes to download", [(id, id) for id in videos]):
-            return picked
-        raise FetchError("No episodes chosen")
-    names = _split(value)
-    if selection.ALL in map(str.casefold, names):
-        return list(videos)
-    known = {episode.casefold(): episode for episode in videos}
-    if unknown := [name for name in names if name.casefold() not in known]:
-        raise FetchError(f"The video list has no episode {', '.join(unknown)}")
-    return [known[name.casefold()] for name in names]
-
-
 def _fetch(client: HttpClient, videos: Mapping[str, str], workers: int) -> list[Episode]:
     columns = TextColumn("{task.description}"), BarColumn(), MofNCompleteColumn()
     with Progress(*columns, console=_console, transient=True) as progress:
@@ -309,51 +292,6 @@ def _fetch(client: HttpClient, videos: Mapping[str, str], workers: int) -> list[
     if not episodes:
         raise FetchError("No episode could be fetched")
     return episodes
-
-
-def _selectors(
-    kind: StreamType, value: str | None, episodes: Sequence[Episode], interactive: bool
-) -> Sequence[str]:
-    per_episode = [_of_type(episode, kind) for episode in episodes]
-    tracks = [track for episode_tracks in per_episode for track in episode_tracks]
-    if value is not None:
-        selectors = _split(value)
-        if unknown := selection.unknown(selectors, tracks):
-            raise FetchError(
-                f"No {kind} track matches {', '.join(unknown)}; the formats command lists them"
-            )
-        return selectors
-    if not interactive or not tracks:
-        return selection.DEFAULTS[kind]
-    offered = selection.options(per_episode)
-    default = selection.defaults(kind, per_episode)
-    choices = [(_label(option, len(episodes)), option.selector) for option in offered]
-    return prompts.checkbox(
-        f"{kind.capitalize()} tracks to download",
-        choices,
-        default=[option.selector for option in offered if option.selector in default],
-    )
-
-
-def _label(option: selection.Option, episodes: int) -> str:
-    label = f"{option.selector}: {option.description}"
-    if option.size is not None:
-        label += f", ~{decimal(option.size)} per episode"
-    if option.episodes < episodes:
-        label += f" (in {option.episodes} of {episodes} episodes)"
-    return label
-
-
-def _tracks(episode: Episode, chosen: Mapping[StreamType, Sequence[str]]) -> list[Track]:
-    return [
-        track
-        for kind in StreamType
-        for track in selection.select(_of_type(episode, kind), chosen[kind])
-    ]
-
-
-def _of_type(episode: Episode, kind: StreamType) -> list[Track]:
-    return [track for track in episode.manifest.tracks if track.type is kind]
 
 
 def _flag(given: bool | None, ask: bool, question: str, *, default: bool) -> bool:
@@ -400,10 +338,6 @@ def _progress_task(
 
 def _count(items: Sized, noun: str) -> str:
     return f"{len(items)} {noun}{'' if len(items) == 1 else 's'}"
-
-
-def _split(value: str) -> list[str]:
-    return [part.strip() for part in value.split(",") if part.strip()]
 
 
 def _fail(error: Exception | str) -> NoReturn:

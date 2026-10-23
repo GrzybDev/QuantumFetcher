@@ -83,7 +83,7 @@ def options(episodes: Iterable[Sequence[Track]]) -> list[Option]:
         for (stream_type, name), group in groups.items()
     ]
     best = [
-        track for tracks in episodes for track in select(_of_type(tracks, StreamType.VIDEO), [BEST])
+        track for tracks in episodes for track in select(of_type(tracks, StreamType.VIDEO), [BEST])
     ]
     if best:
         description = "The highest bitrate of each episode"
@@ -95,18 +95,24 @@ def defaults(kind: StreamType, episodes: Iterable[Sequence[Track]]) -> set[str]:
     """The options the default selectors of `kind` pick in any of the episodes."""
     named = [default for default in DEFAULTS[kind] if default != BEST]
     picked = {
-        selector(track) for tracks in episodes for track in select(_of_type(tracks, kind), named)
+        selector(track) for tracks in episodes for track in select(of_type(tracks, kind), named)
     }
     return picked | ({BEST} & set(DEFAULTS[kind]))
+
+
+def of_type(tracks: Iterable[Track], kind: StreamType) -> list[Track]:
+    """Keep the tracks of one type, in their order.
+
+    Args:
+        tracks: The tracks to keep from.
+        kind: The type to keep.
+    """
+    return [track for track in tracks if track.type is kind]
 
 
 def selector(track: Track) -> str:
     """The selector that picks this track and no other track of its episode."""
     return str(track.bitrate) if track.type is StreamType.VIDEO else track.name
-
-
-def _of_type(tracks: Iterable[Track], kind: StreamType) -> list[Track]:
-    return [track for track in tracks if track.type is kind]
 
 
 def _names(track: Track) -> set[str]:

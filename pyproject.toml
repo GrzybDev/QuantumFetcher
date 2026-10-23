@@ -44,6 +44,7 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF", "TID251"]
 
 [tool.ruff.lint.flake8-tidy-imports.banned-api]
+"quantumfetcher.choice".msg = "Only the command line modules use the terminal."
 "quantumfetcher.cli".msg = "Only the command line modules use the terminal."
 "quantumfetcher.prompts".msg = "Only the command line modules use the terminal."
 "questionary".msg = "Only the command line modules use the terminal."
@@ -51,7 +52,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF", "TID251"]
 "typer".msg = "Only the command line modules use the terminal."
 
 [tool.ruff.lint.per-file-ignores]
-"src/quantumfetcher/{__main__,cli,prompts}.py" = ["TID251"]
+"src/quantumfetcher/{__main__,choice,cli,prompts}.py" = ["TID251"]
 "tests/**" = ["TID251"]
 
 [tool.pytest]
