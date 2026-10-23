@@ -25,8 +25,10 @@ def checkbox(
     options = [
         questionary.Choice(label, value=value, checked=value in default) for label, value in choices
     ]
-    return questionary.checkbox(message, choices=options).unsafe_ask()
+    picked: list[str] = questionary.checkbox(message, choices=options).unsafe_ask()
+    return picked
 
 
 def confirm(message: str, default: bool) -> bool:
-    return questionary.confirm(message, default=default).unsafe_ask()
+    answer: bool = questionary.confirm(message, default=default).unsafe_ask()
+    return answer

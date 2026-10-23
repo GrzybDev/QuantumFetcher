@@ -61,8 +61,9 @@ def parse_ttml(document: bytes, offset: float) -> Iterator[Cue]:
 def episode_title(episode_id: str) -> Cue | None:
     """A cue with the title of the episode `episode_id` belongs to, such as J1A to episode 1."""
     match = _EPISODE_NUMBER.match(episode_id)
-    title = EPISODE_TITLES.get(int(match[1])) if match else None
-    return Cue(_TITLE_START, _TITLE_END, f"EPISODE {match[1]}: {title}") if title else None
+    if match is None or (title := EPISODE_TITLES.get(int(match[1]))) is None:
+        return None
+    return Cue(_TITLE_START, _TITLE_END, f"EPISODE {match[1]}: {title}")
 
 
 def to_srt(cues: Iterable[Cue]) -> str:

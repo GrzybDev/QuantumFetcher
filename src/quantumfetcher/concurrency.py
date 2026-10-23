@@ -1,5 +1,5 @@
 from collections import deque
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Generator, Iterable
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from itertools import islice
 
@@ -9,7 +9,7 @@ _POLL_SECONDS = 0.5
 
 def completed_in_order[T, R](
     function: Callable[[T], R], items: Iterable[T], workers: int
-) -> Iterator[Future[R]]:
+) -> Generator[Future[R]]:
     """Call `function` with each item on `workers` threads, yielding each call's future in the
     order of the items once it is done.
 

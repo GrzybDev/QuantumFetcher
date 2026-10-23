@@ -300,15 +300,16 @@ def _language(code: str | None) -> int:
 
 
 def _track_id(moof: memoryview) -> int:
-    return struct.unpack_from(">I", _find(moof, b"traf", b"tfhd"), 4)[0]
+    return int.from_bytes(_find(moof, b"traf", b"tfhd")[4:8])
 
 
 def _find(data: bytes | memoryview, *path: bytes) -> memoryview:
     found = memoryview(data)
     for kind in path:
-        found = next((payload for child, payload in boxes(found) if child == kind), None)
-        if found is None:
+        child = next((payload for name, payload in boxes(found) if name == kind), None)
+        if child is None:
             raise FetchError(f"No {kind.decode('latin-1')} box")
+        found = child
     return found
 
 
@@ -335,6 +336,6 @@ def _complete_boxes(file: BinaryIO) -> Iterator[tuple[bytes, int, int]]:
 
 def _expect_box(file: BinaryIO, kind: bytes) -> int:
     header = file.read(_BOX.size)
-    if len(header) < _BOX.size or _BOX.unpack(header)[1] != kind:
+    if len(header) < _BOX.size or header[4:] != kind:
         raise FetchError(f"Expected a {kind.decode('latin-1')} box")
-    return _BOX.unpack(header)[0]
+    return int.from_bytes(header[:4])

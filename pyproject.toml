@@ -30,6 +30,7 @@ quantumfetcher = "quantumfetcher.cli:app"
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "ruff>=0.17.2",
 ]
 
@@ -39,3 +40,7 @@ src = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "PTH", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src"]

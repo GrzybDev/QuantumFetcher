@@ -22,6 +22,8 @@ jobs:
     permissions:
       contents: read
     uses: GrzybDev/actions/.github/workflows/python-checks.yml@v1
+    with:
+      mypy: true
 
   version:
     name: Bump Version

@@ -107,8 +107,7 @@ class ClientManifest:
             for size in ("MaxWidth", "MaxHeight"):
                 if stream.get(size) is not None:
                     stream.set(size, str(max(int(level.get(size, 0)) for level in levels)))
-        ET.indent(root)
-        return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+        return _serialize(root)
 
 
 def server_manifest(client_manifest: str, files: Iterable[tuple[Track, str]]) -> bytes:
@@ -128,13 +127,12 @@ def server_manifest(client_manifest: str, files: Iterable[tuple[Track, str]]) ->
         if track.language:
             element.set("systemLanguage", track.language)
         ET.SubElement(element, "param", name="trackName", value=track.name, valuetype="data")
-    ET.indent(root)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return _serialize(root)
 
 
 def _tracks(stream: ET.Element, manifest_url: str, timescale: int) -> Iterator[Track]:
     try:
-        stream_type = StreamType(stream.get("Type"))
+        stream_type = StreamType(stream.get("Type", ""))
     except ValueError:
         return
     stream_timescale = int(stream.get("TimeScale", timescale))
@@ -164,7 +162,7 @@ def _tracks(stream: ET.Element, manifest_url: str, timescale: int) -> Iterator[T
 
 def _name(stream: ET.Element) -> str:
     """The name fragment URLs and QuantumStreamer know the stream by."""
-    return stream.get("Name") or stream.get("Type", "")
+    return stream.get("Name") or stream.get("Type") or ""
 
 
 def _timeline(stream: ET.Element) -> tuple[tuple[int, ...], int]:
@@ -188,3 +186,14 @@ def _resolve(manifest_url: str, path: str) -> str:
 
 def _optional_int(value: str | None) -> int | None:
     return None if value is None else int(value)
+
+
+def _serialize(root: ET.Element) -> bytes:
+    """The UTF-8 XML document of `root`, indented in place first.
+
+    Args:
+        root: The document's root element.
+    """
+    ET.indent(root)
+    xml: bytes = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return xml
