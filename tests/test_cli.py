@@ -210,15 +210,19 @@ def test_videolist_patch_points_the_games_list_at_the_server(run: Run, game: Gam
 
 
 @pytest.mark.parametrize("patched", [False, True], ids=["unpatched", "patched"])
-def test_videolist_build_saves_the_list_episodes_are_read_from(
+def test_videolist_build_replaces_the_list_episodes_are_read_from_keeping_the_games_own(
     run: Run, game: GameFolder, patched: bool
 ) -> None:
     if patched:
         videolist.patch(game.videolist, "127.0.0.1:1")
-    built = {"J3A": "http://cdn.test/J3A.ism/manifest"}
+    replaced = videolist.unpatched(game.videolist)
+    games_own = replaced.read_bytes()
     source = game.root / "list.json"
-    source.write_text(json.dumps(built), encoding="utf-16")
-    result = run("videolist", "build", source, game.root)
-    assert result.exit_code == 0, result.output
-    assert json.loads(run("videolist", "dump", game.root).stdout) == built
+    for episode in ("J3A", "J4A"):
+        built = {episode: f"http://cdn.test/{episode}.ism/manifest"}
+        source.write_text(json.dumps(built), encoding="utf-16")
+        result = run("videolist", "build", source, game.root)
+        assert result.exit_code == 0, result.output
+        assert json.loads(run("videolist", "dump", game.root).stdout) == built
+        assert replaced.with_name(f"{replaced.name}.old").read_bytes() == games_own
     assert videolist.original_path(game.videolist).exists() == patched

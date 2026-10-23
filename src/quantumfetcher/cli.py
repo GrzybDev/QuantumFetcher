@@ -242,7 +242,10 @@ def patch(
     )
 
 
-@videolist_app.command(help="Build the video list from a JSON object of episode IDs and URLs.")
+@videolist_app.command(
+    help="Build the video list from a JSON object of episode IDs and URLs, keeping the first list "
+    "it replaces as a .old file."
+)
 def build(
     input_json: Annotated[
         Path,
@@ -260,8 +263,8 @@ def build(
 ) -> None:
     try:
         videos = videolist.read_json(input_json)
-        path = videolist_path or videolist.unpatched(_game(game_dir, _interactive()).videolist)
-        videolist.save(path, videos)
+        path = _source_videolist(game_dir, videolist_path)
+        videolist.replace(path, videos)
     except (FetchError, OSError) as error:
         _fail(error)
     typer.echo(f"Saved {_count(videos, 'episode')} to {path}")
