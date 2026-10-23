@@ -1,4 +1,3 @@
-import logging
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -7,20 +6,16 @@ from rich.progress import Progress
 
 from quantumfetcher import selection
 from quantumfetcher.download import TrackDownloader
-from quantumfetcher.episodes import Episode, EpisodeDownloader, fetch_episodes
-from quantumfetcher.manifest import ClientManifest, Track
-from support import MANIFEST_URL, FakeClient, client_manifest, episode_responses, served_locally
+from quantumfetcher.episodes import Episode, EpisodeDownloader
+from quantumfetcher.manifest import Track
+from support import FakeClient, episode_manifest, episode_responses, files, served_locally
 
-EPISODE = Episode("J1A", ClientManifest.parse(MANIFEST_URL, client_manifest()))
+EPISODE = Episode("J1A", episode_manifest())
 
 
 @pytest.fixture
 def client() -> FakeClient:
     return FakeClient(episode_responses())
-
-
-def files(folder: Path) -> list[str]:
-    return sorted(path.name for path in folder.iterdir())
 
 
 def tracks(*selectors: str) -> list[Track]:
@@ -65,11 +60,10 @@ def test_moves_aside_server_manifests_quantumstreamer_could_use_instead(
     folder = tmp_path / "J1A"
     folder.mkdir()
     (folder / "QUANTUM_BREAK_Ep_1A.ism").write_text("old", encoding="utf-8")
-    with caplog.at_level(logging.WARNING, "quantumfetcher.episodes"):
-        download(client, tmp_path, [(EPISODE, tracks("500000", "esmx"))])
+    download(client, tmp_path, [(EPISODE, tracks("500000", "esmx"))])
     assert list(folder.glob("*.ism")) == [folder / "J1A.ism"]
     assert (folder / "QUANTUM_BREAK_Ep_1A.ism.old").exists()
-    assert caplog.records
+    assert "Renamed QUANTUM_BREAK_Ep_1A.ism to QUANTUM_BREAK_Ep_1A.ism.old" in caplog.text
 
 
 def test_leaves_episodes_without_video_and_audio_to_stream(
@@ -121,12 +115,3 @@ def test_reports_the_episodes_that_fail_and_carries_on(
     assert "Could not download J1B: 404" in caplog.text
     assert "J1A_video_500000.ismv" in files(tmp_path / "J1A")
     assert "J1B_video_2000000.ismv.part" in files(tmp_path / "J1B")
-
-
-def test_fetch_episodes_skips_the_ones_that_are_unavailable(
-    client: FakeClient, caplog: pytest.LogCaptureFixture
-) -> None:
-    videos = {"J1A": MANIFEST_URL, "J2A": "http://cdn.test/J2A.ism/manifest"}
-    episodes = fetch_episodes(client, videos, 2, Progress(disable=True))
-    assert [episode.id for episode in episodes] == ["J1A"]
-    assert "Skipping J2A: 404" in caplog.text

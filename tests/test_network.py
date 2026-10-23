@@ -21,6 +21,16 @@ def response(status: int, content: bytes = b"") -> requests.Response:
 def fetch(
     monkeypatch: pytest.MonkeyPatch, *outcomes: requests.Response | Exception, retries: int = 3
 ) -> tuple[bytes, int, list[float]]:
+    """Fetch URL while the server answers with `outcomes`, without waiting between retries.
+
+    Args:
+        monkeypatch: The fixture patching the session and the pauses.
+        outcomes: The response or error of each request in turn.
+        retries: The times the client retries a failed request.
+
+    Returns:
+        The body, the number of requests made and the pause before each retry.
+    """
     session_get = Mock(side_effect=outcomes)
     waits: list[float] = []
     monkeypatch.setattr(requests.Session, "get", session_get)

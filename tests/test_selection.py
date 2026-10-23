@@ -4,10 +4,10 @@ from collections.abc import Iterable
 import pytest
 
 from quantumfetcher import selection
-from quantumfetcher.manifest import ClientManifest, StreamType, Track
-from support import MANIFEST_URL, client_manifest
+from quantumfetcher.manifest import StreamType, Track
+from support import episode_manifest
 
-TRACKS = ClientManifest.parse(MANIFEST_URL, client_manifest()).tracks
+TRACKS = episode_manifest().tracks
 
 
 def keys(tracks: Iterable[Track]) -> list[tuple[str, int]]:

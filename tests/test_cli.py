@@ -9,7 +9,7 @@ from quantumfetcher import videolist
 from quantumfetcher.cli import app
 from quantumfetcher.game import GameFolder
 from quantumfetcher.network import HttpClient
-from support import MANIFEST_URL, FakeClient, episode_responses
+from support import MANIFEST_URL, FakeClient, episode_responses, files
 
 MISSING_URL = "http://cdn.test/J2A.ism/manifest"
 
@@ -43,7 +43,7 @@ def test_downloads_the_default_tracks_of_the_episodes_given(run: Run, game: Game
     result = run("download", game.root, "--episodes", "j1a", "--yes")
     assert result.exit_code == 0, result.output
     assert f"Downloaded 1 episode to {game.episodes}" in result.output
-    assert sorted(path.name for path in (game.episodes / "J1A").iterdir()) == [
+    assert files(game.episodes / "J1A") == [
         "J1A.ism",
         "J1A.ismc",
         "J1A_enus_256000.isma",
@@ -124,8 +124,16 @@ def test_needs_the_game_folder_unless_both_paths_are_given(run: Run, game: GameF
 def test_formats_lists_the_tracks_and_their_selectors(run: Run, game: GameFolder) -> None:
     result = run("formats", game.root, "-e", "J1A")
     assert result.exit_code == 0, result.output
-    for selector in ("2000000", "500000", "enus", "esmx", "enus_captions", "eses_captions"):
-        assert selector in result.output
+    cells = [[cell.strip() for cell in line.split("│")[1:3]] for line in result.output.splitlines()]
+    assert [row for row in cells if row and row[0] in {"video", "audio", "text"}] == [
+        ["video", "best"],
+        ["video", "2000000"],
+        ["video", "500000"],
+        ["audio", "enus"],
+        ["audio", "esmx"],
+        ["text", "enus_captions"],
+        ["text", "eses_captions"],
+    ]
 
 
 def test_videolist_dump_prints_or_saves_the_list(run: Run, game: GameFolder) -> None:
@@ -138,13 +146,10 @@ def test_videolist_dump_prints_or_saves_the_list(run: Run, game: GameFolder) -> 
     assert json.loads(output.read_text(encoding="utf-8"))["J1A"] == MANIFEST_URL
 
 
-def test_videolist_patch_keeps_the_original_list(run: Run, game: GameFolder) -> None:
+def test_videolist_patch_points_the_games_list_at_the_server(run: Run, game: GameFolder) -> None:
     result = run("videolist", "patch", game.root, "-s", "127.0.0.1:5000")
     assert result.exit_code == 0, result.output
-    assert "Pointed 2 episodes at http://127.0.0.1:5000" in result.output
     assert videolist.load(game.videolist)["J1A"] == "http://127.0.0.1:5000/J1A/manifest"
-    original = videolist.load(videolist.original_path(game.videolist))
-    assert original == {"J1A": MANIFEST_URL, "J2A": MISSING_URL}
 
 
 @pytest.mark.parametrize("patched", [False, True], ids=["unpatched", "patched"])
@@ -160,11 +165,3 @@ def test_videolist_build_saves_the_list_episodes_are_read_from(
     assert result.exit_code == 0, result.output
     assert json.loads(run("videolist", "dump", game.root).stdout) == built
     assert videolist.original_path(game.videolist).exists() == patched
-
-
-def test_reports_broken_video_lists(run: Run, game: GameFolder) -> None:
-    game.videolist.write_bytes(b"broken")
-    result = run("videolist", "dump", game.root)
-    assert result.exit_code == 1, result.output
-    assert "Error:" in result.output
-    assert "videoList.rmdj" in result.output

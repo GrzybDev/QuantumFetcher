@@ -1,25 +1,15 @@
 import dataclasses
 import io
 import struct
-from collections.abc import Sequence
 
 import pytest
 
 from quantumfetcher import mp4
 from quantumfetcher.errors import FetchError
-from quantumfetcher.manifest import ClientManifest, Track
-from support import (
-    CHUNK,
-    MANIFEST_URL,
-    PPS,
-    SPS,
-    box,
-    client_manifest,
-    fragment,
-    quantumstreamer_index,
-)
+from quantumfetcher.manifest import Track
+from support import CHUNK, PPS, SPS, box, fragment, quantumstreamer_index, track, write_track
 
-VIDEO, _, AUDIO, _, TEXT, _ = ClientManifest.parse(MANIFEST_URL, client_manifest()).tracks
+VIDEO, AUDIO, TEXT = track("video", 2_000_000), track("enus"), track("enus_captions")
 FRAGMENTS = [fragment(f"media {number}".encode() * 50) for number in range(3)]
 HEADER_SIZE = len(mp4.track_header(VIDEO, 1))
 
@@ -32,15 +22,6 @@ def find(data: bytes, *path: bytes) -> bytes:
     for kind in path:
         data = next(bytes(payload) for child, payload in mp4.boxes(data) if child == kind)
     return data
-
-
-def write(track: Track, fragments: Sequence[bytes], file: io.BytesIO | None = None) -> bytes:
-    file = file or io.BytesIO()
-    writer = mp4.TrackWriter(file, track)
-    for data in fragments[writer.fragments :]:
-        writer.append(data)
-    writer.finish()
-    return file.getvalue()
 
 
 @pytest.mark.parametrize(
@@ -91,7 +72,7 @@ def test_rejects_codecs_it_cannot_describe(track: Track) -> None:
 
 
 def test_index_gives_the_manifest_time_and_moof_offset_of_each_fragment() -> None:
-    data = write(AUDIO, FRAGMENTS)
+    data = write_track(AUDIO, FRAGMENTS)
     index = quantumstreamer_index(data)
     assert list(index) == ["0", str(CHUNK), str(2 * CHUNK)]
     for offset, expected in zip(index.values(), FRAGMENTS, strict=True):
@@ -102,7 +83,7 @@ def test_index_gives_the_manifest_time_and_moof_offset_of_each_fragment() -> Non
 
 
 def test_reads_back_the_media_data_of_each_fragment() -> None:
-    data = write(TEXT, FRAGMENTS)
+    data = write_track(TEXT, FRAGMENTS)
     assert list(mp4.read_fragments(io.BytesIO(data))) == [
         (number * CHUNK, f"media {number}".encode() * 50) for number in range(3)
     ]
@@ -114,30 +95,30 @@ def test_reads_back_the_media_data_of_each_fragment() -> None:
     ids=["inside the second fragment", "after the second fragment", "inside the third fragment"],
 )
 def test_carries_on_after_the_last_whole_fragment(cut: int, kept: int) -> None:
-    whole = write(VIDEO, FRAGMENTS)
+    whole = write_track(VIDEO, FRAGMENTS)
     offsets = list(quantumstreamer_index(whole).values())
     file = io.BytesIO(whole[: offsets[2] + cut])
     writer = mp4.TrackWriter(file, VIDEO)
     assert (writer.fragments, writer.size) == (kept, offsets[kept])
-    assert write(VIDEO, FRAGMENTS, file) == whole
+    assert write_track(VIDEO, FRAGMENTS, file) == whole
 
 
 @pytest.mark.parametrize("cut", [0, 3, HEADER_SIZE, HEADER_SIZE + 50])
 def test_starts_over_without_a_whole_fragment(cut: int) -> None:
-    whole = write(VIDEO, FRAGMENTS)
+    whole = write_track(VIDEO, FRAGMENTS)
     writer = mp4.TrackWriter(io.BytesIO(whole[:cut]), VIDEO)
     assert (writer.fragments, writer.size) == (0, 0)
 
 
 def test_drops_an_index_written_before_an_interruption() -> None:
-    whole = write(AUDIO, FRAGMENTS)
+    whole = write_track(AUDIO, FRAGMENTS)
     assert mp4.TrackWriter(io.BytesIO(whole), AUDIO).fragments == 3
-    assert write(AUDIO, FRAGMENTS, io.BytesIO(whole)) == whole
+    assert write_track(AUDIO, FRAGMENTS, io.BytesIO(whole)) == whole
 
 
 def test_finishes_only_with_every_fragment() -> None:
     with pytest.raises(FetchError, match="2 fragments but the manifest lists 3"):
-        write(AUDIO, FRAGMENTS[:2])
+        write_track(AUDIO, FRAGMENTS[:2])
 
 
 @pytest.mark.parametrize(

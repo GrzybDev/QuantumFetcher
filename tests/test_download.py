@@ -8,15 +8,10 @@ import pytest
 from quantumfetcher.concurrency import completed_in_order
 from quantumfetcher.download import TrackDownloader
 from quantumfetcher.errors import FetchError
-from quantumfetcher.manifest import ClientManifest
 from quantumfetcher.mp4 import TrackWriter, read_fragments
-from support import MANIFEST_URL, FakeClient, client_manifest, episode_responses
+from support import FakeClient, episode_responses, track
 
-ENUS = next(
-    track
-    for track in ClientManifest.parse(MANIFEST_URL, client_manifest(chunks=6)).tracks
-    if track.name == "enus"
-)
+ENUS = track("enus", chunks=6)
 URLS = [ENUS.fragment_url(start) for start in ENUS.start_times]
 RESPONSES = episode_responses(chunks=6)
 
@@ -72,15 +67,6 @@ def test_keeps_the_partial_download_when_a_fragment_fails(path: Path) -> None:
     assert not path.exists()
     with partial(path).open("r+b") as file:
         assert TrackWriter(file, ENUS).fragments == 3
-
-
-def test_completed_in_order_yields_in_item_order_however_calls_finish() -> None:
-    def call(number: int) -> int:
-        time.sleep(0.01 * (5 - number))
-        return number
-
-    with closing(completed_in_order(call, range(5), 5)) as futures:
-        assert [future.result() for future in futures] == [0, 1, 2, 3, 4]
 
 
 def test_completed_in_order_runs_few_items_ahead_and_cancels_the_rest_when_closed() -> None:

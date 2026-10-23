@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 import pytest
@@ -21,10 +20,6 @@ def game_list(tmp_path: Path) -> Path:
     return path
 
 
-def original(path: Path) -> Path:
-    return path.with_name("videoList_original.rmdj")
-
-
 def test_decodes_the_games_own_list(game_list: Path) -> None:
     assert videolist.load(game_list) == {
         "J1 - 4K Test": "http://a.test/J1A%20-%204K%20Test.ism/manifest?tkn=1",
@@ -33,10 +28,11 @@ def test_decodes_the_games_own_list(game_list: Path) -> None:
     }
 
 
-def test_encodes_what_it_decodes(game_list: Path) -> None:
+def test_reencodes_a_list_it_wrote_byte_for_byte(game_list: Path) -> None:
     videos = videolist.load(game_list)
-    assert videolist.decode(videolist.encode(videos)) == videos
-    assert encrypt(videolist.encode(videos)) == json.dumps(videos, indent=4).encode()
+    written = videolist.encode(videos)
+    assert videolist.decode(written) == videos
+    assert videolist.encode(videolist.decode(written)) == written
 
 
 @pytest.mark.parametrize(
@@ -51,26 +47,19 @@ def test_rejects_files_that_are_not_video_lists(game_list: Path, data: bytes) ->
 
 
 def test_patch_points_every_episode_at_the_server_and_keeps_the_original(game_list: Path) -> None:
+    original = game_list.with_name("videoList_original.rmdj")
+    assert videolist.unpatched(game_list) == game_list
     videolist.patch(game_list, "127.0.0.1:1234")
     assert videolist.load(game_list) == {
         "J1 - 4K Test": "http://127.0.0.1:1234/J1 - 4K Test/manifest",
         "J1A": "http://127.0.0.1:1234/J1A/manifest",
         "J2A": "http://127.0.0.1:1234/J2A/manifest",
     }
-    assert original(game_list).read_bytes() == encrypt(GAME_LIST)
-
-
-def test_patching_again_starts_from_the_original(game_list: Path) -> None:
-    videolist.patch(game_list, "127.0.0.1:1234")
+    assert original.read_bytes() == encrypt(GAME_LIST)
+    assert videolist.unpatched(game_list) == original
     videolist.patch(game_list, "10.0.0.1:80")
     assert videolist.load(game_list)["J1A"] == "http://10.0.0.1:80/J1A/manifest"
-    assert original(game_list).read_bytes() == encrypt(GAME_LIST)
-
-
-def test_unpatched_prefers_the_kept_original(game_list: Path) -> None:
-    assert videolist.unpatched(game_list) == game_list
-    videolist.patch(game_list, "127.0.0.1:1234")
-    assert videolist.unpatched(game_list) == original(game_list)
+    assert original.read_bytes() == encrypt(GAME_LIST)
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16"])

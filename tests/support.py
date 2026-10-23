@@ -1,10 +1,13 @@
+import io
 import re
 import struct
 import xml.etree.ElementTree as ET
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from quantumfetcher.errors import FetchError
+from quantumfetcher.manifest import ClientManifest, Track
+from quantumfetcher.mp4 import TrackWriter
 from quantumfetcher.network import HttpClient
 
 MANIFEST_URL = "http://cdn.test/quantum/J1A.ism/manifest?tkn=secret"
@@ -57,6 +60,30 @@ def client_manifest(chunks: int = 3) -> bytes:
     ).encode()
 
 
+def episode_manifest(chunks: int = 3) -> ClientManifest:
+    """The parsed client_manifest.
+
+    Args:
+        chunks: The number of fragments of each track.
+    """
+    return ClientManifest.parse(MANIFEST_URL, client_manifest(chunks))
+
+
+def track(name: str, bitrate: int = 256000, chunks: int = 3) -> Track:
+    """The track of episode_manifest with this stream name and bitrate.
+
+    Args:
+        name: The stream name, such as video or enus.
+        bitrate: The bitrate of the track's quality level.
+        chunks: The number of fragments of each track.
+    """
+    return next(
+        track
+        for track in episode_manifest(chunks).tracks
+        if (track.name, track.bitrate) == (name, bitrate)
+    )
+
+
 def fragment_url(name: str, bitrate: int, start_time: int) -> str:
     return (
         "http://cdn.test/quantum/J1A.ism/"
@@ -74,6 +101,22 @@ def fragment(payload: bytes, track_id: int = 1) -> bytes:
     tfhd = box(b"tfhd", struct.pack(">II", 0, track_id))
     moof = box(b"moof", box(b"mfhd", struct.pack(">II", 0, 1)), box(b"traf", tfhd))
     return moof + box(b"mdat", payload)
+
+
+def write_track(track: Track, fragments: Sequence[bytes], file: io.BytesIO | None = None) -> bytes:
+    """The bytes of a finished track file, carrying on after the whole fragments `file` holds.
+
+    Args:
+        track: The track the file holds.
+        fragments: Every fragment of the track, as the server sends them.
+        file: The file to carry on, or None to write a new one.
+    """
+    file = file or io.BytesIO()
+    writer = TrackWriter(file, track)
+    for data in fragments[writer.fragments :]:
+        writer.append(data)
+    writer.finish()
+    return file.getvalue()
 
 
 def ttml(*paragraphs: str) -> bytes:
@@ -102,6 +145,15 @@ def episode_responses(chunks: int = 3) -> dict[str, bytes]:
             line = caption("00:00:00.500", "00:00:01.500", f"{name} {number}")
             responses[fragment_url(name, 256000, start)] = fragment(ttml(line))
     return responses
+
+
+def files(folder: Path) -> list[str]:
+    """The sorted names of what `folder` holds.
+
+    Args:
+        folder: The folder to list.
+    """
+    return sorted(path.name for path in folder.iterdir())
 
 
 def quantumstreamer_index(data: bytes) -> dict[str, int]:

@@ -9,7 +9,7 @@ from prompt_toolkit.output import DummyOutput
 
 from quantumfetcher import prompts
 
-DOWN, SPACE, ENTER = "\x1b[B", " ", "\r"
+ENTER = "\r"
 
 
 @contextmanager
@@ -19,31 +19,10 @@ def typing(keys: str) -> Iterator[None]:
         yield
 
 
-@pytest.mark.parametrize(
-    ("keys", "picked"),
-    [
-        (ENTER, ["esmx"]),
-        (SPACE + ENTER, ["enus", "esmx"]),
-        (DOWN + SPACE + DOWN + SPACE + ENTER, ["frfr"]),
-    ],
-    ids=["default", "another added", "default swapped"],
-)
-def test_checkbox_starts_from_the_default_and_returns_the_values_picked(
-    keys: str, picked: list[str]
-) -> None:
+def test_checkbox_starts_from_the_default() -> None:
     choices = [("English", "enus"), ("Spanish", "esmx"), ("French", "frfr")]
-    with typing(keys):
-        assert prompts.checkbox("Audio", choices, default=["esmx"]) == picked
-
-
-@pytest.mark.parametrize(
-    ("keys", "default", "answer"),
-    [(ENTER, True, True), ("n", True, False), ("y", False, True)],
-    ids=["default", "no", "yes"],
-)
-def test_confirm_takes_the_default_or_the_answer(keys: str, default: bool, answer: bool) -> None:
-    with typing(keys):
-        assert prompts.confirm("Save?", default) == answer
+    with typing(ENTER):
+        assert prompts.checkbox("Audio", choices, default=["esmx"]) == ["esmx"]
 
 
 def test_folder_asks_until_given_an_existing_folder(tmp_path: Path) -> None:

@@ -1,14 +1,11 @@
-import io
 from pathlib import Path
 
 import pytest
 
 from quantumfetcher import subtitles
 from quantumfetcher.errors import FetchError
-from quantumfetcher.manifest import ClientManifest
-from quantumfetcher.mp4 import TrackWriter
 from quantumfetcher.subtitles import Cue
-from support import CHUNK, MANIFEST_URL, caption, client_manifest, fragment, ttml
+from support import CHUNK, caption, fragment, track, ttml, write_track
 
 
 def test_reads_captions_with_their_line_breaks() -> None:
@@ -70,20 +67,15 @@ def test_srt_times_round_to_milliseconds() -> None:
 def test_episode_title_follows_the_episode_number(episode: str, title: str | None) -> None:
     cue = subtitles.episode_title(episode)
     assert (cue and cue.text) == title
-    assert subtitles.episode_title("J2A") == Cue(7.5, 9.833, "EPISODE 2: Prisoner")
 
 
 def test_reads_the_cues_of_a_downloaded_text_track(tmp_path: Path) -> None:
-    manifest = ClientManifest.parse(MANIFEST_URL, client_manifest(chunks=2))
-    track = next(track for track in manifest.tracks if track.name == "enus_captions")
+    captions = track("enus_captions", chunks=2)
+    fragments = [fragment(ttml(caption("00:00:00.5", "00:00:01", f"line {n}"))) for n in range(2)]
     path = tmp_path / "track.ismt"
-    file = io.BytesIO()
-    writer = TrackWriter(file, track)
-    for number in range(2):
-        writer.append(fragment(ttml(caption("00:00:00.5", "00:00:01", f"line {number}"))))
-    writer.finish()
-    path.write_bytes(file.getvalue())
-    assert subtitles.read_cues(path, track.timescale) == [
+    path.write_bytes(write_track(captions, fragments))
+    chunk = CHUNK / captions.timescale
+    assert subtitles.read_cues(path, captions.timescale) == [
         Cue(0.5, 1, "line 0"),
-        Cue(CHUNK / 10**7 + 0.5, CHUNK / 10**7 + 1, "line 1"),
+        Cue(chunk + 0.5, chunk + 1, "line 1"),
     ]

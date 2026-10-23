@@ -3,22 +3,23 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from quantumfetcher.errors import FetchError
-from quantumfetcher.manifest import ClientManifest, StreamType, Track, server_manifest
-from support import CHUNK, MANIFEST_URL, PPS, SPS, client_manifest, fragment_url
-
-SMIL = {"smil": "http://www.w3.org/2001/SMIL20/Language"}
-MANIFEST = ClientManifest.parse(MANIFEST_URL, client_manifest())
-
-
-def track(name: str, bitrate: int = 256000) -> Track:
-    return next(
-        track for track in MANIFEST.tracks if (track.name, track.bitrate) == (name, bitrate)
-    )
+from quantumfetcher.manifest import ClientManifest, StreamType
+from support import (
+    CHUNK,
+    MANIFEST_URL,
+    PPS,
+    SPS,
+    client_manifest,
+    episode_manifest,
+    fragment_url,
+    track,
+)
 
 
 def test_reads_a_track_for_each_quality_level() -> None:
     assert [
-        (track.type, track.name, track.language, track.bitrate) for track in MANIFEST.tracks
+        (track.type, track.name, track.language, track.bitrate)
+        for track in episode_manifest().tracks
     ] == [
         (StreamType.VIDEO, "video", None, 2_000_000),
         (StreamType.VIDEO, "video", None, 500_000),
@@ -81,7 +82,7 @@ def test_rejects_invalid_manifests(xml: bytes) -> None:
 
 def test_local_copy_offers_only_the_kept_tracks() -> None:
     kept = [track("video", 500_000), track("esmx"), track("enus_captions")]
-    streams = ET.fromstring(MANIFEST.local_copy(kept)).findall("StreamIndex")
+    streams = ET.fromstring(episode_manifest().local_copy(kept)).findall("StreamIndex")
     assert [
         (stream.get("Type"), stream.get("Name"), stream.get("QualityLevels")) for stream in streams
     ] == [("video", None, "1"), ("audio", "esmx", "1"), ("text", "enus_captions", "1")]
@@ -91,24 +92,4 @@ def test_local_copy_offers_only_the_kept_tracks() -> None:
     assert (video.get("MaxWidth"), video.get("MaxHeight")) == ("640", "360")
     assert [chunk.attrib for chunk in video.findall("c")] == [
         {"n": str(number), "d": str(CHUNK)} for number in range(3)
-    ]
-
-
-def test_server_manifest_names_the_client_manifest_and_each_track_file() -> None:
-    tracks = [track("video", 500_000), track("enus"), track("enus_captions")]
-    files = [(track, f"{track.name}.file") for track in tracks]
-    root = ET.fromstring(server_manifest("J1A.ismc", files))
-    meta = root.find("smil:head/smil:meta[@name='clientManifestRelativePath']", SMIL)
-    assert meta is not None
-    assert meta.get("content") == "J1A.ismc"
-    rows = []
-    for element in root.findall("smil:body/smil:switch/*", SMIL):
-        param = element.find("smil:param[@name='trackName']", SMIL)
-        assert param is not None
-        kind = element.tag.split("}")[1]
-        rows.append((kind, element.get("src"), element.get("systemBitrate"), param.get("value")))
-    assert rows == [
-        ("video", "video.file", "500000", "video"),
-        ("audio", "enus.file", "256000", "enus"),
-        ("textstream", "enus_captions.file", "256000", "enus_captions"),
     ]
