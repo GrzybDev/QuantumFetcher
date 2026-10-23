@@ -58,11 +58,13 @@ class DownloadSummary:
         saved: The track files saved.
         offline: The IDs of the episodes QuantumStreamer plays offline.
         failed: The IDs of the episodes that failed.
+        subtitles_failed: The IDs of the episodes whose subtitles could not all be saved.
     """
 
     saved: list[Path] = field(default_factory=list)
     offline: list[str] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    subtitles_failed: list[str] = field(default_factory=list)
 
 
 def fetch_episodes(
@@ -163,9 +165,10 @@ class EpisodeDownloader:
                 "Leaving %s to stream, as playing it offline needs video and audio", episode.id
             )
         if self._extract_subtitles:
-            for track in tracks:
-                if track.type is StreamType.TEXT:
-                    self._save_subtitles(episode, track, folder)
+            text_tracks = [track for track in tracks if track.type is StreamType.TEXT]
+            # A list rather than a generator, so one failure does not skip the other tracks.
+            if not all([self._save_subtitles(episode, track, folder) for track in text_tracks]):
+                summary.subtitles_failed.append(episode.id)
 
     def _download_track(self, label: str, track: Track, path: Path) -> bool:
         """Download a track unless its file exists, returning whether it did.
@@ -202,16 +205,28 @@ class EpisodeDownloader:
         folder.server_manifest.write_bytes(server_manifest(folder.client_manifest.name, files))
         log.info("Wrote %s and %s", folder.server_manifest.name, folder.client_manifest.name)
 
-    def _save_subtitles(self, episode: Episode, track: Track, folder: EpisodeFolder) -> None:
+    def _save_subtitles(self, episode: Episode, track: Track, folder: EpisodeFolder) -> bool:
+        """Save a text track's captions as SubRip unless its file exists, returning whether it is.
+
+        Args:
+            episode: The episode the track belongs to.
+            track: The text track, already downloaded.
+            folder: The episode's folder.
+        """
         path = folder.subtitles(track)
         if path.exists():
             log.info("Keeping %s, as it may hold edited captions", path.name)
-            return
-        cues = subtitles.read_cues(folder.track(track), track.timescale)
-        if self._episode_title and (title := subtitles.episode_title(episode.id)):
-            cues.append(title)
-        path.write_text(subtitles.to_srt(cues), encoding="utf-8", newline="\r\n")
+            return True
+        try:
+            cues = subtitles.read_cues(folder.track(track), track.timescale)
+            if self._episode_title and (title := subtitles.episode_title(episode.id)):
+                cues.append(title)
+            path.write_text(subtitles.to_srt(cues), encoding="utf-8", newline="\r\n")
+        except (FetchError, OSError) as error:
+            log.error("Could not save %s of %s: %s", path.name, episode.id, error)
+            return False
         log.info("Saved %s", path.name)
+        return True
 
 
 def _fetch_manifest(client: HttpClient, url: str) -> ClientManifest | FetchError:

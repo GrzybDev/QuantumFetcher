@@ -181,6 +181,11 @@ def download(
         f"Saved {_count(summary.saved, 'track')} to {episodes_path}, "
         f"with {len(summary.offline)} of {_count(plan, 'episode')} playable offline"
     )
+    if unsaved := summary.subtitles_failed:
+        _fail(
+            f"Could not save the subtitles of {len(unsaved)} of {_count(plan, 'episode')}: "
+            f"{', '.join(unsaved)}"
+        )
 
 
 @app.command(help="List the tracks the episodes offer and the selectors that pick them.")

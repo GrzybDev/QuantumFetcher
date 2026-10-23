@@ -8,7 +8,17 @@ from typer.testing import CliRunner, Result
 from quantumfetcher import cli, prompts, videolist
 from quantumfetcher.game import GameFolder
 from quantumfetcher.network import HttpClient
-from support import MANIFEST_URL, FakeClient, client_manifest, episode_responses, files
+from support import (
+    MANIFEST_URL,
+    FakeClient,
+    caption,
+    client_manifest,
+    episode_responses,
+    files,
+    fragment,
+    fragment_url,
+    ttml,
+)
 
 MISSING_URL = "http://cdn.test/J2A.ism/manifest"
 
@@ -72,6 +82,19 @@ def test_extracts_subtitles_when_asked(run: Run, game: GameFolder) -> None:
     assert "EPISODE 1: Monarch Solutions" in srt
     assert "Saved 1 track to" in result.output
     assert "with 0 of 1 episode playable offline" in result.output
+
+
+def test_keeps_the_episode_when_its_subtitles_cannot_be_saved(
+    run: Run, game: GameFolder, client: FakeClient
+) -> None:
+    broken = fragment(ttml(caption("10f", "20f", "unsupported time")))
+    client.responses[fragment_url("enus_captions", 256000, 0)] = broken
+    result = run("download", game.root, "-e", "J1A", "-y", "--extract-subtitles")
+    assert result.exit_code == 1, result.output
+    assert "with 1 of 1 episode playable offline" in result.output
+    assert "Error: Could not save the subtitles of 1 of 1 episode: J1A" in result.output
+    assert "Could not download" not in result.output
+    assert "J1A.ism" in files(game.episodes / "J1A")
 
 
 def test_skips_episodes_whose_manifest_is_unavailable(run: Run, game: GameFolder) -> None:
