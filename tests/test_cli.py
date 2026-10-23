@@ -1,12 +1,11 @@
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Sequence
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner, Result
 
-from quantumfetcher import videolist
-from quantumfetcher.cli import app
+from quantumfetcher import cli, prompts, videolist
 from quantumfetcher.game import GameFolder
 from quantumfetcher.network import HttpClient
 from support import MANIFEST_URL, FakeClient, episode_responses, files
@@ -34,7 +33,7 @@ def run(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> Run:
     monkeypatch.setattr(HttpClient, "get", lambda _, url: client.get(url))
 
     def invoke(*arguments: object) -> Result:
-        return CliRunner().invoke(app, [str(argument) for argument in arguments])
+        return CliRunner().invoke(cli.app, [str(argument) for argument in arguments])
 
     return invoke
 
@@ -119,6 +118,64 @@ def test_needs_the_game_folder_unless_both_paths_are_given(run: Run, game: GameF
     )  # fmt: skip
     assert result.exit_code == 0, result.output
     assert (output / "J1A" / "J1A_enus_256000.isma").exists()
+
+
+def test_asks_for_what_the_command_line_leaves_out_in_a_terminal(
+    run: Run, game: GameFolder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    asked: list[tuple[object, ...]] = []
+
+    def folder(message: str) -> Path:
+        asked.append((message,))
+        return game.root
+
+    def checkbox(
+        message: str, choices: Sequence[tuple[str, str]], default: Collection[str] = ()
+    ) -> list[str]:
+        offered = [value for _, value in choices]
+        picked = [value for value in offered if value in default]
+        asked.append((message, offered, picked))
+        return ["J1A"] if message == "Episodes to download" else picked
+
+    def confirm(message: str, default: bool) -> bool:
+        asked.append((message, default))
+        return True
+
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(prompts, "folder", folder)
+    monkeypatch.setattr(prompts, "checkbox", checkbox)
+    monkeypatch.setattr(prompts, "confirm", confirm)
+    result = run("download")
+    assert result.exit_code == 0, result.output
+    assert asked == [
+        ("Game folder",),
+        ("Episodes to download", ["J1A", "J2A"], []),
+        ("Video tracks to download", ["best", "2000000", "500000"], ["best"]),
+        ("Audio tracks to download", ["enus", "esmx"], ["enus"]),
+        ("Text tracks to download", ["enus_captions", "eses_captions"], ["enus_captions"]),
+        ("Save the captions as SubRip files that QuantumStreamer shows instead?", False),
+        ("Add the episode title to the saved subtitles?", True),
+    ]
+    assert files(game.episodes / "J1A") == [
+        "J1A.ism",
+        "J1A.ismc",
+        "J1A_enus_256000.isma",
+        "J1A_enus_captions_256000.ismt",
+        "J1A_video_2000000.ismv",
+        "enus_captions.srt",
+    ]
+    srt = (game.episodes / "J1A" / "enus_captions.srt").read_text(encoding="utf-8")
+    assert "EPISODE 1: Monarch Solutions" in srt
+
+
+def test_fails_when_no_episode_is_picked(
+    run: Run, game: GameFolder, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(prompts, "checkbox", lambda message, choices, default=(): [])
+    result = run("download", game.root)
+    assert result.exit_code == 1, result.output
+    assert "Error: No episodes chosen" in result.output
 
 
 def test_formats_lists_the_tracks_and_their_selectors(run: Run, game: GameFolder) -> None:
