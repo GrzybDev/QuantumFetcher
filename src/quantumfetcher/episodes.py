@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Mapping, Sequence
-from contextlib import closing
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -9,7 +8,7 @@ from rich.filesize import decimal
 from rich.progress import Progress
 
 from quantumfetcher import subtitles
-from quantumfetcher.concurrency import completed_in_order
+from quantumfetcher.concurrency import results_in_order
 from quantumfetcher.download import TrackDownloader
 from quantumfetcher.errors import FetchError
 from quantumfetcher.manifest import ClientManifest, StreamType, Track, server_manifest
@@ -56,16 +55,26 @@ class EpisodeFolder:
 def fetch_episodes(
     client: HttpClient, videos: Mapping[str, str], workers: int, progress: Progress
 ) -> list[Episode]:
-    """The episodes whose manifests can be fetched, with a warning about each of the others."""
+    """Fetch the episodes' manifests, skipping with a warning each one that cannot be fetched.
+
+    Args:
+        client: The client to fetch with.
+        videos: The manifest URL of each episode ID.
+        workers: The number of manifests to fetch at once.
+        progress: The progress display to show a task on.
+
+    Returns:
+        The episodes whose manifests were fetched, in the order of `videos`.
+    """
     task = progress.add_task("Fetching manifests", total=len(videos))
     episodes = []
     fetch = partial(_fetch_manifest, client)
-    with closing(completed_in_order(fetch, videos.values(), workers)) as manifests:
-        for episode_id, future in zip(videos, manifests, strict=True):
-            try:
-                episodes.append(Episode(episode_id, future.result()))
-            except FetchError as error:
-                log.warning("Skipping %s: %s", episode_id, error)
+    with results_in_order(fetch, videos.values(), workers) as manifests:
+        for episode_id, manifest in zip(videos, manifests, strict=True):
+            if isinstance(manifest, FetchError):
+                log.warning("Skipping %s: %s", episode_id, manifest)
+            else:
+                episodes.append(Episode(episode_id, manifest))
             progress.advance(task)
     return episodes
 
@@ -159,5 +168,9 @@ class EpisodeDownloader:
         log.info("Saved %s", path.name)
 
 
-def _fetch_manifest(client: HttpClient, url: str) -> ClientManifest:
-    return ClientManifest.parse(url, client.get(url))
+def _fetch_manifest(client: HttpClient, url: str) -> ClientManifest | FetchError:
+    # Returned rather than raised, as the first error raised would end the other fetches.
+    try:
+        return ClientManifest.parse(url, client.get(url))
+    except FetchError as error:
+        return error

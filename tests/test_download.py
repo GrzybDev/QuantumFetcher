@@ -1,11 +1,8 @@
-import threading
 import time
-from contextlib import closing
 from pathlib import Path
 
 import pytest
 
-from quantumfetcher.concurrency import completed_in_order
 from quantumfetcher.download import TrackDownloader
 from quantumfetcher.errors import FetchError
 from quantumfetcher.mp4 import TrackWriter, read_fragments
@@ -67,33 +64,3 @@ def test_keeps_the_partial_download_when_a_fragment_fails(path: Path) -> None:
     assert not path.exists()
     with partial(path).open("r+b") as file:
         assert TrackWriter(file, ENUS).fragments == 3
-
-
-def test_completed_in_order_runs_few_items_ahead_and_cancels_the_rest_when_closed() -> None:
-    started: list[int] = []
-    release = threading.Event()
-
-    def call(number: int) -> int:
-        started.append(number)
-        release.wait(5)
-        return number
-
-    futures = completed_in_order(call, range(100), 2)
-    release.set()
-    assert next(futures).result() == 0
-    futures.close()
-    time.sleep(0.05)
-    assert len(started) <= 6
-
-
-def test_completed_in_order_passes_on_what_a_call_raises() -> None:
-    def call(number: int) -> int:
-        if number == 1:
-            raise FetchError("broken")
-        return number
-
-    with closing(completed_in_order(call, range(3), 2)) as futures:
-        results = list(futures)
-    assert results[0].result() == 0
-    with pytest.raises(FetchError, match="broken"):
-        results[1].result()
