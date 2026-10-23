@@ -30,7 +30,7 @@ quantumfetcher = "quantumfetcher.cli:app"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.17.0",
+    "ruff>=0.17.2",
 ]
 
 [tool.ruff]
