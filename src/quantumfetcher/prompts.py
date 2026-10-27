@@ -49,3 +49,12 @@ def confirm(message: str, default: bool) -> bool:
     """
     answer: bool = questionary.confirm(message, default=default).unsafe_ask()
     return answer
+
+
+def pause(message: str) -> None:
+    """Wait until any key is pressed.
+
+    Args:
+        message: The message to show while waiting.
+    """
+    questionary.press_any_key_to_continue(message).unsafe_ask()

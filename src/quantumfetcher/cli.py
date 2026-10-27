@@ -31,8 +31,9 @@ from quantumfetcher.manifest import StreamType, Track
 from quantumfetcher.network import DEFAULT_CONNECTIONS, DEFAULT_RETRIES, HttpClient
 
 app = typer.Typer(
-    help="Fetch Quantum Break's live action episodes for offline in-game playback.",
-    no_args_is_help=True,
+    help="Fetch Quantum Break's live action episodes for offline in-game playback. "
+    "Without a command, it runs download.",
+    subcommand_metavar="[COMMAND] [ARGS]...",
 )
 videolist_app = typer.Typer(
     help="Read and write videoList.rmdj, the game's list of episodes.", no_args_is_help=True
@@ -76,9 +77,9 @@ Retries = Annotated[int, typer.Option(min=0, help="Times to retry a failed reque
 Workers = Annotated[int, typer.Option(min=1, help="Requests to make at once.")]
 
 
-@app.callback()
+@app.callback(invoke_without_command=True)
 def main(context: typer.Context) -> None:
-    """Log the progress of the command to the terminal while it runs.
+    """Log the progress of the command to the terminal while it runs, downloading without one.
 
     Args:
         context: The command's context.
@@ -88,6 +89,15 @@ def main(context: typer.Context) -> None:
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
     context.call_on_close(lambda: logger.removeHandler(handler))
+    if context.invoked_subcommand is None:
+        # Opened from a file manager, the program runs without arguments in a console window that
+        # closes as soon as it exits, along with the result or the error it printed.
+        try:
+            download()
+        except typer.Exit:
+            _pause()
+            raise
+        _pause()
 
 
 @app.command()
@@ -296,6 +306,11 @@ def build(
 def _interactive() -> bool:
     # Questions are asked on stdout and answered on stdin, so both have to be the terminal.
     return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _pause() -> None:
+    if _interactive():
+        prompts.pause("Press any key to exit")
 
 
 def _game(game_dir: Path | None, interactive: bool) -> GameFolder:

@@ -157,6 +157,7 @@ def test_rejects_what_matches_nothing(
     [
         (["download", "-e", "J1A", "-y"], True, "with --yes"),
         (["download", "-e", "J1A"], False, "without a terminal"),
+        ([], False, "without a terminal"),
         (["videolist", "dump"], False, "without a terminal"),
     ],
 )
@@ -179,7 +180,7 @@ def test_needs_no_game_folder_when_both_paths_are_given(run: Run, game: GameFold
     assert (output / "J1A" / "J1A_enus_256000.isma").exists()
 
 
-def test_asks_for_what_the_command_line_leaves_out_in_a_terminal(
+def test_downloads_without_a_command_asking_for_everything_in_a_terminal(
     run: Run, game: GameFolder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     asked: list[tuple[object, ...]] = []
@@ -204,7 +205,8 @@ def test_asks_for_what_the_command_line_leaves_out_in_a_terminal(
     monkeypatch.setattr(prompts, "folder", folder)
     monkeypatch.setattr(prompts, "checkbox", checkbox)
     monkeypatch.setattr(prompts, "confirm", confirm)
-    result = run("download")
+    monkeypatch.setattr(prompts, "pause", lambda message: asked.append((message,)))
+    result = run()
     assert result.exit_code == 0, result.output
     assert asked == [
         ("Game folder",),
@@ -214,6 +216,7 @@ def test_asks_for_what_the_command_line_leaves_out_in_a_terminal(
         ("Text tracks to download", ["enus_captions", "eses_captions"], ["enus_captions"]),
         ("Save the captions as SubRip files that QuantumStreamer shows instead?", False),
         ("Add the episode title to the saved subtitles?", True),
+        ("Press any key to exit",),
     ]
     assert files(game.episodes / "J1A") == [
         "J1A.ism",
@@ -227,14 +230,18 @@ def test_asks_for_what_the_command_line_leaves_out_in_a_terminal(
     assert "EPISODE 1: Monarch Solutions" in srt
 
 
-def test_fails_when_no_episode_is_picked(
+def test_fails_when_no_episode_is_picked_and_waits_for_a_key_without_a_command(
     run: Run, game: GameFolder, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    paused: list[str] = []
     monkeypatch.setattr(cli, "_interactive", lambda: True)
+    monkeypatch.setattr(prompts, "folder", lambda message: game.root)
     monkeypatch.setattr(prompts, "checkbox", lambda message, choices, default=(): [])
-    result = run("download", game.root)
+    monkeypatch.setattr(prompts, "pause", paused.append)
+    result = run()
     assert result.exit_code == 1, result.output
     assert "Error: No episodes chosen" in result.output
+    assert paused == ["Press any key to exit"]
 
 
 def test_formats_lists_the_tracks_and_their_selectors(run: Run, game: GameFolder) -> None:
