@@ -49,6 +49,7 @@ Features
   through QuantumStreamer
 - Pick episodes and tracks on the command line with selectors such as `best`, `1080p`, a bitrate, a stream name or a
   language, or from lists in the terminal
+- Open the program from a file manager to be asked for everything a download needs
 - List the tracks the episodes offer, with their estimated sizes and the selectors that pick them (`formats`)
 - Resume interrupted downloads from the last whole fragment and keep finished tracks
 - Add tracks to downloaded episodes later, such as another audio language
@@ -83,6 +84,10 @@ Usage
 quantumfetcher --help
 python -m quantumfetcher --help
 ```
+
+Without a command, as when the program is opened from a file manager, QuantumFetcher runs `download` with no
+options, which asks for the game folder, the episodes and the tracks. In a terminal it then waits for a key before it
+exits, so the window keeps the result or the error on screen.
 
 Every command has its own help, such as `quantumfetcher download --help`. The commands share these conventions:
 
